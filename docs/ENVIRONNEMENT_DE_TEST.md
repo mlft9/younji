@@ -33,7 +33,7 @@ sudo groupadd sftponly
 sudo useradd -m -g sftponly -s /usr/sbin/nologin testsftp && sudo passwd testsftp
 ```
 
-Ajoute à la fin de `/etc/ssh/sshd_config` :
+Crée le fichier `/etc/ssh/sshd_config.d/younji-lab.conf` (et non à la fin de `sshd_config` : `sshd` garde la **première** valeur lue, et le fichier par défaut de Debian contient déjà `KbdInteractiveAuthentication no` ; les fichiers de `sshd_config.d/` sont lus en premier). Vérifie ensuite avec `sudo sshd -t`, puis `sudo sshd -T | grep -i kbdinteractive` (attendu : `yes`) :
 ```
 KbdInteractiveAuthentication yes
 UsePAM yes
