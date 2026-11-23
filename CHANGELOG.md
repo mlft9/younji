@@ -63,6 +63,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Chaque commande du cœur doit être autorisée explicitement pour la fenêtre (capabilities) ; les appels de l'interface passent en plus par une iframe d'isolation qui filtre les commandes (ADR-015).
 - La fenêtre ne peut afficher que le contenu de l'application : la navigation vers une autre adresse et l'ouverture de nouvelles fenêtres sont refusées.
 - Tests automatiques qui échouent si la configuration de sécurité est affaiblie.
+- L'inspecteur web (clic droit → Inspecter) n'existe qu'en mode développement ; un test garantit que la version publiée ne l'embarque pas.
 - Vérification des clés d'hôte SSH : à la première connexion, l'empreinte `SHA256:…` est affichée et doit être acceptée. Si la clé d'un serveur connu change, même pour un autre type de clé, la connexion est bloquée avec une alerte, sans moyen de passer outre. Les clés acceptées sont conservées dans un fichier `known_hosts` propre à Younji (ADR-023).
 - Algorithmes SSH modernes uniquement : échange de clés hybride post-quantique en priorité, ni SHA-1, ni CBC, ni compression (ADR-019).
 - Les mots de passe et passphrases ne sont transmis qu'une fois au cœur de l'application, détruits dès la fin de l'authentification (une copie interne à la bibliothèque SSH ne peut pas être effacée, limite documentée), et jamais renvoyés à l'interface ni écrits dans les journaux. L'interface ne connaît jamais le chemin ni le contenu de la clé privée (ADR-020, ADR-021).
