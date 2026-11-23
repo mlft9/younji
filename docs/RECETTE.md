@@ -20,6 +20,33 @@ Légende : 🔒 test de sécurité · ⭐ test prioritaire (le minimum à faire 
 > Le coffre et les réglages sont dans `%APPDATA%\io.github.mlft9.younji\` (`vault.younji`, `settings.json`).
 > Pour repartir d'un état « premier lancement », ferme Younji et renomme ce dossier (ne le supprime pas, garde-le en sauvegarde).
 
+### A1 bis. Variante : poste Ubuntu (24.04 ou plus récent)
+- [ ] Paquets système nécessaires à Tauri :
+  ```bash
+  sudo apt update && sudo apt install -y build-essential curl wget file git \
+    libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev libssl-dev patchelf
+  ```
+- [ ] **Rust** : `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` (puis rouvrir le terminal). La version est fixée par `rust-toolchain.toml`.
+- [ ] **Node.js 22 ou plus** (celui d'`apt` est trop ancien) : par exemple via `nvm`, ou les paquets NodeSource.
+- [ ] Cloner le dépôt, `npm ci`, `npm run check`, puis `npm run tauri dev`.
+- [ ] Un éditeur de texte graphique installé dans `/usr/bin` (`gnome-text-editor`, fourni par défaut, convient) : il sert à l'édition SFTP.
+- [ ] Une appli TOTP sur ton téléphone.
+
+> Le coffre et les réglages sont dans `~/.local/share/io.github.mlft9.younji/` (`vault.younji`, `settings.json`), les journaux dans son sous-dossier `logs/`.
+> Pour repartir d'un état « premier lancement », ferme Younji et renomme ce dossier.
+> **Fenêtre blanche ou vide** (fréquent avec certains pilotes graphiques, NVIDIA surtout) : lance `WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev` et signale-le dans tes retours.
+
+Sous Ubuntu, les tests restent les mêmes, avec ces différences :
+
+| Test (fiche Windows) | Sous Ubuntu |
+| --- | --- |
+| Ouvrir `vault.younji` dans Notepad++ | `xxd ~/.local/share/io.github.mlft9.younji/vault.younji \| less` ou `strings` sur le fichier : aucun nom d'hôte ni utilisateur |
+| Clé de lab dans `~\.younji-lab` | Même chose dans `~/.younji-lab/` (`chmod 600` sur la clé privée) |
+| Édition SFTP dans le Bloc-notes | S'ouvre dans l'éditeur graphique trouvé (`gnome-text-editor`, `gedit`, `kate`…) |
+| Dossiers locaux refusés `C:\`, `~\.ssh` | `/`, ton dossier personnel `~` entier, `~/.ssh` : refusés |
+| Mark-of-the-Web (« provient d'un autre ordinateur ») | 🔒 À la place : `ls -l` sur un fichier téléchargé affiche `-rw-------` (0600), même s'il était exécutable sur le serveur |
+| Installeur Windows (étape 0) | Installer le `.deb` (`sudo apt install ./younji_*.deb`) ou lancer l'AppImage produits par le workflow **build** |
+
 ### A2. VM `younji-deb` sur Proxmox (obligatoire)
 Tout est détaillé dans `docs/ENVIRONNEMENT_DE_TEST.md` §3. En résumé :
 - [ ] Debian 12/13 sans interface, sur un **réseau isolé** (pont/VLAN dédié en NAT, jamais exposé à Internet).
