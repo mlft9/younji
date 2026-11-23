@@ -60,6 +60,8 @@ sudo install -m 600 -o testkey -g testkey younji_test_ed25519.pub /home/testkey/
 
 # 2FA pour test2fa : se connecter en tant que test2fa, puis lancer :
 google-authenticator -t -d -f -r 3 -R 30 -w 3   # scanner le QR code dans une appli TOTP
+# -d : un code ne sert qu'une fois ; -r 3 -R 30 : 3 connexions au plus par 30 s (au-delà, refus sans
+# demander le code). Pendant les tests, attendre le code suivant entre deux essais. Horloge : `timedatectl`.
 # Dans /etc/pam.d/sshd, ajouter :  auth required pam_google_authenticator.so nullok
 # (nullok : les comptes sans TOTP configuré, dont le tien, continuent de se connecter normalement)
 

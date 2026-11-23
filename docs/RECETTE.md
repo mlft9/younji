@@ -71,7 +71,7 @@ Tout est détaillé dans `docs/ENVIRONNEMENT_DE_TEST.md` §3. En résumé :
 - [ ] Paramètres → langue : bascule FR ↔ EN **sans redémarrer**, tous les textes changent.
 - [ ] Thème : suit le thème Windows par défaut, peut être forcé en clair ou sombre.
 - [ ] Installeur : lancer à la main le workflow **build** sur GitHub (onglet Actions), télécharger l'installeur Windows, l'installer et le lancer.
-- [ ] 🔒 Clic droit → « Inspecter » ou F12 : rien ne doit permettre d'ouvrir une autre page web dans la fenêtre.
+- [ ] 🔒 Inspecteur web : en mode développement (`npm run tauri dev`), clic droit → « Inspecter » est **normal** (outil de développement). Dans la version **installée** (`.deb`, AppImage ou installeur Windows produits par `build.yml`), le clic droit ne doit **pas** proposer « Inspecter ».
 
 ### Étape 1 — Terminal SSH
 - [ ] ⭐ Connexion rapide sur `testpwd` (mot de passe).
@@ -104,6 +104,15 @@ Tout est détaillé dans `docs/ENVIRONNEMENT_DE_TEST.md` §3. En résumé :
 - [ ] Clés d'hôte connues : la liste montre la VM ; en supprimer une puis se reconnecter redemande l'acceptation de l'empreinte.
 
 ### Étape 3 — 2FA et générateur de clés
+
+> **Si la 2FA échoue**, vérifie d'abord le lab (pièges fréquents, ce ne sont pas des bugs de Younji) :
+> - **Un code ne sert qu'une fois** (`-d`) : après un essai avec `ssh` dans un terminal, attends le code suivant (30 s) avant d'essayer dans Younji.
+> - **3 connexions au plus par 30 secondes** (`-r 3 -R 30`) : au-delà, PAM refuse **sans même demander le code**. Attends 30 s.
+> - **Horloge** : sur la VM, `timedatectl` doit afficher `System clock synchronized: yes` et l'heure juste ; un décalage de plus de ~1 min invalide les codes.
+> - **Mode de connexion** : dans la connexion rapide, « mot de passe » (le mot de passe est envoyé automatiquement, seul le code est demandé) et « Questions du serveur (2FA) » (les deux sont demandés) fonctionnent tous les deux.
+> - **Cause exacte** : sur la VM, `sudo journalctl -u ssh -n 30` montre pourquoi PAM a refusé.
+>
+> Si ça échoue encore, note le message affiché par Younji et ces lignes de journal (elles ne contiennent pas de secret) dans ton `/retour`.
 - [ ] ⭐ Connexion à `test2fa` : le mot de passe puis le code TOTP sont demandés dans une fenêtre dédiée.
 - [ ] Hôte du carnet `test2fa` avec mot de passe enregistré : seul le code TOTP est demandé.
 - [ ] Code faux : refus propre, pas de plantage.
