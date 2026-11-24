@@ -658,6 +658,24 @@ describe('saisie des lettres accentuées (WebKitGTK)', () => {
     });
   });
 
+  it('n’envoie rien de plus quand xterm envoie la touche en différé (code 229)', async () => {
+    const a = await registered(1);
+    const keyHandler = fake(a.session).attachCustomKeyEventHandler.mock.calls[0]?.[0] as (e: {
+      type: string;
+    }) => boolean;
+    const onData = fake(a.session).onData.mock.calls[0]?.[0] as (d: string) => void;
+    keyHandler({ type: 'keydown' });
+    // Comme CompositionHelper : envoi programmé au keydown, avant l'événement input.
+    setTimeout(() => {
+      onData('é');
+    }, 0);
+    (a.session as unknown as { host: HTMLElement }).host.dispatchEvent(
+      new InputEvent('input', { data: 'é', inputType: 'insertText', bubbles: true }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(writesTo(1).join('')).toBe('é');
+  });
+
   it('n’envoie rien de plus si xterm a déjà envoyé la touche', async () => {
     const a = await registered(1);
     a.type('a'); // xterm a émis la donnée pendant la touche…
