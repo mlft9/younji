@@ -842,7 +842,7 @@ async fn open_shell(
     // serveur sans `LANG` (Debian minimale) démarre bash en locale « C », et readline convertit
     // les lettres accentuées tapées au clavier en séquences « Méta » (rien ne s'affiche).
     // `C.UTF-8` ne révèle rien du poste (pas de langue) ; le serveur peut la refuser
-    // (`AcceptEnv`), et une locale qu'il définit lui-même (PAM, /etc/default/locale) l'emporte.
+    // (`AcceptEnv`) ou la redéfinir (fichiers de profil du shell).
     channel
         .set_env(false, "LANG", SHELL_LANG)
         .await

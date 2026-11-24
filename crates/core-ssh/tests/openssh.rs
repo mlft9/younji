@@ -229,7 +229,8 @@ async fn typed_accented_letters_reach_the_shell() {
     };
     client.accept_and_open().await;
     // Comme au clavier : chaque caractère dans une écriture séparée, sans collage encadré.
-    for chunk in ["echo ", "<", "é", "è", "à", "ç", ">", "\r"] {
+    // Le résultat attendu (« + » au lieu de « = ») diffère de l'écho de la frappe.
+    for chunk in ["echo ", "=", "é", "è", "à", "ç", "=", " | tr = +", "\r"] {
         client
             .handle
             .write(chunk.as_bytes().to_vec())
@@ -237,7 +238,7 @@ async fn typed_accented_letters_reach_the_shell() {
             .unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    client.wait_output("<éèàç>\r\n").await;
+    client.wait_output("+éèàç+\r\n").await;
 }
 
 #[tokio::test]

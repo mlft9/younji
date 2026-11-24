@@ -147,7 +147,7 @@ Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de pa
   - **SFTP (étape 4)** : aucun nom de fichier, chemin ni contenu dans les journaux ; seulement des compteurs (bilan d'un transfert, copies d'édition supprimées), des identifiants opaques et des codes d'erreur. Le texte d'état renvoyé par le serveur SFTP n'est ni journalisé ni recopié dans les erreurs : il est traduit en code stable. Les erreurs et les événements de transfert ne renvoient à l'interface aucun chemin local.
 - **Erreurs** : codes stables (`ssh.auth_failed`), sans écho de l'entrée utilisateur ni du secret.
 - **Processus externes** : aucun secret dans les arguments ni dans les variables d'environnement visibles.
-- **Variables d'environnement envoyées au serveur SSH** (étape 5) : uniquement `LANG=C.UTF-8`, valeur constante, pour que le shell distant accepte les lettres accentuées tapées au clavier. Rien du poste n'est transmis (ni langue, ni nom d'utilisateur local) ; le serveur peut la refuser (`AcceptEnv`), et une locale qu'il définit lui-même reste prioritaire.
+- **Variables d'environnement envoyées au serveur SSH** (étape 5) : uniquement `LANG=C.UTF-8`, valeur constante, pour que le shell distant accepte les lettres accentuées tapées au clavier. Rien du poste n'est transmis (ni langue, ni nom d'utilisateur local) ; le serveur peut la refuser (`AcceptEnv`) ou la redéfinir (fichiers de profil du shell).
 - **Fichiers temporaires** : noms aléatoires, permissions restrictives, suppression garantie, y compris en cas d'erreur (`Drop`).
 - **Crash** : pas de rapport de plantage envoyé (aucune télémétrie).
 - **Diffusion multi-sessions** : indicateur visuel impossible à manquer et confirmation à l'activation.
