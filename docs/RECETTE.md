@@ -149,7 +149,8 @@ Connecté en terminal sur `testpwd` :
 **Écran partagé (SSH-07)**
 - [ ] Ouvrir `testpwd` depuis le carnet, puis Ctrl+Maj+D : un deuxième panneau s'ouvre à droite et se connecte seul. Un seul onglet dans la barre.
 - [ ] ⭐ Ctrl+Maj+O dans chaque panneau jusqu'à une grille 2×2 de 4 terminaux connectés. `tty` dans chacun : quatre valeurs différentes.
-- [ ] ⭐ Ctrl+Maj+← / → / ↑ / ↓ (depuis un terminal) : le focus passe au bon voisin et la frappe arrive dans ce panneau.
+- [ ] Clic dans un panneau : il prend le focus (bordure) et la frappe y arrive. *(Ctrl+Maj+flèches : facultatif, signalé non fonctionnel sous Ubuntu.)*
+- [ ] ⭐ Taper `echo éèàçù` au clavier puis Entrée : le texte s'affiche tel quel, y compris sur une Debian sans `LANG`.
 - [ ] ⭐ Glisser un séparateur à la souris : les panneaux se redimensionnent, `htop` s'adapte.
 - [ ] Tab jusqu'à un séparateur, puis flèches, Début, Fin : il bouge, sans réduire un panneau à zéro.
 - [ ] Le nom du serveur s'affiche en tête de chaque panneau.
