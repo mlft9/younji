@@ -13,6 +13,11 @@ const MAX_VARIABLE_NAME = 32;
 /** Caractères de contrôle refusés dans un contenu (tout sauf `\t` et `\n`). */
 // eslint-disable-next-line no-control-regex -- recherche volontaire des caractères de contrôle
 const CONTENT_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
+/**
+ * Caractères invisibles de mise en forme (largeur nulle, contrôles bidirectionnels, BOM),
+ * refusés comme dans le cœur : l'aperçu montrerait un autre texte que celui qui part.
+ */
+const INVISIBLE_FORMAT = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
 /** Caractères de contrôle refusés dans une valeur (tous, retour à la ligne compris). */
 // eslint-disable-next-line no-control-regex -- recherche volontaire des caractères de contrôle
 const VALUE_CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
@@ -73,7 +78,8 @@ export function isSafeContent(content: string): boolean {
   return (
     content.trim() !== '' &&
     new TextEncoder().encode(content).length <= MAX_SNIPPET_BYTES &&
-    !CONTENT_CONTROL.test(content)
+    !CONTENT_CONTROL.test(content) &&
+    !INVISIBLE_FORMAT.test(content)
   );
 }
 
@@ -82,7 +88,12 @@ export function isSafeContent(content: string): boolean {
  * (un retour à la ligne lancerait la commande avant la fin, un `ESC` injecterait une séquence).
  */
 export function isSafeValue(value: string): boolean {
-  return value !== '' && value.length <= MAX_VALUE_LENGTH && !VALUE_CONTROL.test(value);
+  return (
+    value !== '' &&
+    value.length <= MAX_VALUE_LENGTH &&
+    !VALUE_CONTROL.test(value) &&
+    !INVISIBLE_FORMAT.test(value)
+  );
 }
 
 /**
@@ -102,7 +113,11 @@ export function renderSnippet(content: string, values: Record<string, string>): 
       out += value;
     }
   }
-  const safe = out.trim() !== '' && out.length <= MAX_RENDERED_LENGTH && !CONTENT_CONTROL.test(out);
+  const safe =
+    out.trim() !== '' &&
+    out.length <= MAX_RENDERED_LENGTH &&
+    !CONTENT_CONTROL.test(out) &&
+    !INVISIBLE_FORMAT.test(out);
   return safe ? out : null;
 }
 

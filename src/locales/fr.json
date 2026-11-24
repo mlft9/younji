@@ -149,7 +149,11 @@
     "controlCharacters": "Attention : il contient des caractères de contrôle invisibles (affichés ci-dessous par des symboles).",
     "preview": "Aperçu du texte à coller",
     "truncated": "Aperçu tronqué : le texte complet sera collé.",
-    "confirm": "Coller"
+    "confirm": "Coller",
+    "broadcast_one": "Diffusion active : ce texte sera collé dans {{count}} session.",
+    "broadcast_other": "Diffusion active : ce texte sera collé dans ces {{count}} sessions, chacune selon son propre mode de collage.",
+    "confirmBroadcast_one": "Coller dans {{count}} session",
+    "confirmBroadcast_other": "Coller dans {{count}} sessions"
   },
   "link": {
     "title": "Ouvrir ce lien ?",
@@ -283,7 +287,7 @@
       "invalid_username": "Nom d'utilisateur invalide (obligatoire si aucune identité n'est choisie).",
       "invalid_tags": "Étiquettes invalides : 16 au plus, 32 caractères chacune.",
       "invalid_notes": "Notes invalides : 4096 caractères au plus.",
-      "invalid_snippet": "Snippet invalide : contenu vide, trop long (16 Kio au plus), avec des caractères de contrôle ou plus de 32 variables.",
+      "invalid_snippet": "Snippet invalide : contenu vide ou trop long (16 Kio au plus), caractères de contrôle ou invisibles, plus de 32 variables, ou description trop longue (512 caractères au plus).",
       "invalid_secret": "Le mot de passe est vide ou trop long.",
       "identity_incomplete": "Une identité doit avoir un mot de passe, une clé, ou les deux.",
       "invalid_auto_lock": "Délai de verrouillage non proposé.",

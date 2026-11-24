@@ -47,5 +47,9 @@ describe('variables des snippets (SNP-02)', () => {
     expect(isSafeContent('a\rb')).toBe(false);
     expect(isSafeContent('é'.repeat(MAX_SNIPPET_BYTES / 2 + 1))).toBe(false);
     expect(renderSnippet('echo \u0007', {})).toBeNull();
+    // Caractères invisibles (« Trojan Source ») refusés, comme dans le cœur.
+    expect(isSafeContent('ls\u202efdp')).toBe(false);
+    expect(isSafeContent('\ufeffls')).toBe(false);
+    expect(isSafeValue('nginx\u200b')).toBe(false);
   });
 });

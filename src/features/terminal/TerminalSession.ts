@@ -40,6 +40,15 @@ import { TERMINAL_FONT_FAMILY, terminalTheme } from './terminalTheme';
 /** Caractères refusés dans un texte envoyé par `sendText` (contrôles hors `\t` et `\n`). */
 // eslint-disable-next-line no-control-regex -- recherche volontaire des caractères de contrôle
 const UNSAFE_TEXT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
+/** Délai après une frappe pendant lequel `onData` est attribué à l'utilisateur. */
+const USER_INPUT_WINDOW_MS = 100;
+/**
+ * Réponses automatiques d'xterm : position du curseur (`ESC[l;cR`), identification
+ * (`ESC[?…c`, `ESC[>…c`), focus (`ESC[I`, `ESC[O`), souris (`ESC[M…`, `ESC[<…`), chaînes
+ * OSC (`ESC]`) et DCS (`ESC P`).
+ */
+// eslint-disable-next-line no-control-regex -- recherche volontaire des séquences d'échappement
+const TERMINAL_REPORT = /\x1b(\[(\d+;\d+R|[?>][\d;]*c|[IO]|M|<)|\]\d+;|P\d)/;
 /** Lignes conservées dans l'historique de défilement. */
 const SCROLLBACK = 10_000;
 /** Anti-rebond du redimensionnement envoyé au serveur. */
@@ -129,11 +138,20 @@ export class TerminalSession {
     });
 
     this.terminal.onData((data) => {
-      this.handleInput(data, false);
+      this.handleInput(data);
     });
+    // Octets bruts (rapports souris X10) : jamais diffusés, ils ne valent que pour ce terminal.
     this.terminal.onBinary((data) => {
-      this.handleInput(data, true);
+      this.pushInput(data, true);
     });
+    // Saisie de l'utilisateur (clavier, saisie composée) : seule elle peut être diffusée. Les
+    // réponses automatiques d'xterm aux requêtes du serveur passent aussi par `onData`.
+    this.terminal.attachCustomKeyEventHandler(() => {
+      this.markUserInput();
+      return true;
+    });
+    this.host.addEventListener('compositionend', this.markUserInput, { capture: true });
+    this.host.addEventListener('input', this.markUserInput, { capture: true });
     this.terminal.onResize(({ cols, rows }) => {
       this.scheduleRemoteResize(cols, rows);
     });
@@ -226,13 +244,36 @@ export class TerminalSession {
    * cible, elle est recopiée dans la file d'entrée de **chaque** cible connectée, qui garde son
    * propre contrôle de flux. Un terminal qui n'est pas une cible n'envoie qu'à sa session.
    */
-  private handleInput(data: string, binary: boolean): void {
-    const { targets } = useBroadcast.getState();
-    if (targets.length >= 2 && targets.includes(this.tabId)) {
-      for (const id of targets) registry.get(id)?.pushInput(data, binary);
+  private handleInput(data: string): void {
+    const targets = this.broadcastTargets();
+    if (targets.length > 0 && this.isUserInput(data)) {
+      for (const id of targets) registry.get(id)?.pushInput(data, false);
     } else {
-      this.pushInput(data, binary);
+      this.pushInput(data, false);
     }
+  }
+
+  /** Cibles de la diffusion si ce terminal en fait partie, sinon liste vide. */
+  broadcastTargets(): string[] {
+    const { targets } = useBroadcast.getState();
+    return targets.length >= 2 && targets.includes(this.tabId) ? targets : [];
+  }
+
+  /** Instant jusqu'auquel `onData` est attribué à une frappe de l'utilisateur. */
+  private userInputUntil = 0;
+
+  private readonly markUserInput = (): void => {
+    this.userInputUntil = performance.now() + USER_INPUT_WINDOW_MS;
+  };
+
+  /**
+   * Vrai si des données de `onData` viennent de l'utilisateur : produites juste après une
+   * frappe, et qui ne ressemblent pas à une réponse automatique du terminal (position du
+   * curseur, identification, focus, souris, chaînes OSC/DCS). Ces réponses restent envoyées à
+   * leur seule session, sans quoi un serveur pourrait écrire dans les autres.
+   */
+  private isUserInput(data: string): boolean {
+    return performance.now() <= this.userInputUntil && !TERMINAL_REPORT.test(data);
   }
 
   /** Envoie des octets à la session, sans diffusion. Renvoie `false` sans session ouverte. */
@@ -484,7 +525,8 @@ export class TerminalSession {
    */
   sendShellIntegration(): void {
     if (this.sessionId === null) return;
-    this.terminal.paste(SHELL_INTEGRATION);
+    // Vers cette seule session, même en diffusion.
+    this.pasteText(SHELL_INTEGRATION);
     this.focus();
   }
 
@@ -503,17 +545,39 @@ export class TerminalSession {
   paste(raw: string): void {
     if (raw === '' || this.sessionId === null) return;
     const analysis = analyzePaste(raw);
-    if (analysis.needsConfirmation && this.ui) {
+    // En diffusion, tout collage est confirmé : le dialogue liste les serveurs visés.
+    const confirm = analysis.needsConfirmation || this.broadcastTargets().length > 0;
+    if (confirm && this.ui) {
       this.ui.confirmPaste(analysis);
-    } else if (!analysis.needsConfirmation) {
+    } else if (!confirm) {
       this.terminal.paste(analysis.text);
     }
   }
 
-  /** Colle après confirmation (texte déjà nettoyé par `analyzePaste`). */
+  /**
+   * Colle après confirmation (texte déjà nettoyé par `analyzePaste`). En diffusion, chaque
+   * cible reçoit le texte encadré selon **son propre** mode de collage, pas celui de ce
+   * terminal.
+   */
   pasteConfirmed(analysis: PasteAnalysis): void {
-    if (this.sessionId !== null) this.terminal.paste(analysis.text);
+    const targets = this.broadcastTargets();
+    if (targets.length > 0) {
+      for (const id of targets) registry.get(id)?.pasteText(analysis.text);
+    } else if (this.sessionId !== null) {
+      this.terminal.paste(analysis.text);
+    }
     this.focus();
+  }
+
+  /**
+   * Colle un texte dans cette seule session, comme xterm (fins de ligne en `\r`, encadrement
+   * si le programme distant l'a demandé), sans passer par la diffusion. Les marqueurs
+   * d'encadrement éventuels sont retirés.
+   */
+  private pasteText(text: string): void {
+    const body = analyzePaste(text).text.replace(/\r?\n/g, '\r');
+    const framed = this.terminal.modes.bracketedPasteMode ? `\x1b[200~${body}\x1b[201~` : body;
+    this.pushInput(framed, false);
   }
 
   /** Copie la sélection dans le presse-papiers. Renvoie `false` s'il n'y a rien à copier. */

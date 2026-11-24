@@ -413,15 +413,28 @@ pub fn snippet_variables(content: &str) -> Vec<&str> {
     names
 }
 
+/// Caractères invisibles de mise en forme (largeur nulle, contrôles bidirectionnels, BOM) :
+/// ils feraient afficher dans l'aperçu un texte différent de celui qui part (« Trojan Source »).
+pub fn is_invisible_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
+    )
+}
+
 /// Contenu de snippet : 1 octet à 16 Kio, sans caractère de contrôle hors saut de ligne et
 /// tabulation (un `ESC` permettrait de sortir du collage encadré ou de cacher une commande),
 /// 32 variables au plus. Les fins de ligne `\r\n` sont ramenées à `\n`.
 fn clean_snippet_content(content: &str) -> Result<String, VaultError> {
     let content = content.replace("\r\n", "\n");
-    let bad_control = content
+    let bad_char = content
         .chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\t');
-    if content.trim().is_empty() || content.len() > MAX_SNIPPET_LEN || bad_control {
+        .any(|c| (c.is_control() && c != '\n' && c != '\t') || is_invisible_format(c));
+    if content.trim().is_empty() || content.len() > MAX_SNIPPET_LEN || bad_char {
         return Err(VaultError::InvalidSnippet);
     }
     if snippet_variables(&content).len() > MAX_SNIPPET_VARIABLES {
@@ -431,8 +444,11 @@ fn clean_snippet_content(content: &str) -> Result<String, VaultError> {
 }
 
 fn check_snippet_description(description: &str) -> Result<(), VaultError> {
-    if description.chars().count() > MAX_SNIPPET_DESCRIPTION_LEN || has_control(description) {
-        Err(VaultError::InvalidNotes)
+    let bad_char = description
+        .chars()
+        .any(|c| c.is_control() || is_invisible_format(c));
+    if description.chars().count() > MAX_SNIPPET_DESCRIPTION_LEN || bad_char {
+        Err(VaultError::InvalidSnippet)
     } else {
         Ok(())
     }
@@ -452,6 +468,15 @@ impl VaultData {
             || self.snippets.len() > MAX_SNIPPETS
         {
             return Err(VaultError::InvalidFile);
+        }
+        // Les snippets sont envoyés au terminal : leur contenu est revérifié à chaque chargement.
+        for snippet in &self.snippets {
+            let valid = clean_name(&snippet.name).is_ok_and(|n| n == snippet.name)
+                && clean_snippet_content(&snippet.content).is_ok_and(|c| c == snippet.content)
+                && check_snippet_description(&snippet.description).is_ok();
+            if !valid {
+                return Err(VaultError::InvalidFile);
+            }
         }
         Ok(())
     }
@@ -1109,7 +1134,17 @@ mod tests {
         assert!(data.upsert_snippet(snippet_input("a\tb\nc")).is_ok());
         let mut bad_desc = snippet_input("ls");
         bad_desc.description = "a\nb".into();
-        assert_eq!(data.upsert_snippet(bad_desc), Err(VaultError::InvalidNotes));
+        assert_eq!(
+            data.upsert_snippet(bad_desc),
+            Err(VaultError::InvalidSnippet)
+        );
+        for invisible in ["ls\u{202E}fdp", "ls\u{200B}", "\u{FEFF}ls", "a\u{2066}b"] {
+            assert_eq!(
+                data.upsert_snippet(snippet_input(invisible)),
+                Err(VaultError::InvalidSnippet),
+                "{invisible:?}"
+            );
+        }
         let mut bad_name = snippet_input("ls");
         bad_name.name = " ".into();
         assert_eq!(data.upsert_snippet(bad_name), Err(VaultError::InvalidName));
@@ -1139,7 +1174,7 @@ mod tests {
     }
 
     #[test]
-    fn too_many_snippets_are_rejected_on_load() {
+    fn invalid_snippets_are_rejected_on_load() {
         let mut data = VaultData::default();
         let snippet = Snippet {
             id: Uuid::new_v4(),
@@ -1147,7 +1182,16 @@ mod tests {
             content: "ls".into(),
             description: String::new(),
         };
-        data.snippets = vec![snippet; MAX_SNIPPETS + 1];
+        data.snippets = vec![snippet.clone(); MAX_SNIPPETS + 1];
         assert_eq!(data.check_loaded(), Err(VaultError::InvalidFile));
+        data.snippets = vec![snippet.clone()];
+        data.check_loaded().unwrap();
+        for bad in ["echo \u{1b}[31m", "", "a\r\nb", "ls\u{202E}"] {
+            data.snippets = vec![Snippet {
+                content: bad.into(),
+                ..snippet.clone()
+            }];
+            assert_eq!(data.check_loaded(), Err(VaultError::InvalidFile), "{bad:?}");
+        }
     }
 }

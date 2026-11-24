@@ -149,7 +149,11 @@
     "controlCharacters": "Warning: it contains invisible control characters (shown below as symbols).",
     "preview": "Preview of the text to paste",
     "truncated": "Preview truncated: the full text will be pasted.",
-    "confirm": "Paste"
+    "confirm": "Paste",
+    "broadcast_one": "Broadcast active: this text will be pasted in {{count}} session.",
+    "broadcast_other": "Broadcast active: this text will be pasted in these {{count}} sessions, each with its own paste mode.",
+    "confirmBroadcast_one": "Paste in {{count}} session",
+    "confirmBroadcast_other": "Paste in {{count}} sessions"
   },
   "link": {
     "title": "Open this link?",
@@ -283,7 +287,7 @@
       "invalid_username": "Invalid user name (required when no identity is selected).",
       "invalid_tags": "Invalid tags: at most 16, 32 characters each.",
       "invalid_notes": "Invalid notes: at most 4096 characters.",
-      "invalid_snippet": "Invalid snippet: empty, too long (16 KiB at most), with control characters or more than 32 variables.",
+      "invalid_snippet": "Invalid snippet: empty or too long (16 KiB at most), control or invisible characters, more than 32 variables, or description too long (512 characters at most).",
       "invalid_secret": "The password is empty or too long.",
       "identity_incomplete": "An identity needs a password, a key, or both.",
       "invalid_auto_lock": "Lock delay not offered.",

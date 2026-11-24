@@ -8,6 +8,8 @@ import { useSettings } from '@/stores/settings';
 
 import { SHELL_INTEGRATION } from '@/features/sftp/osc7';
 
+import { analyzePaste } from './paste';
+
 import {
   closeAllTabs,
   closePane,
@@ -23,6 +25,7 @@ function fake(session: TerminalSession) {
     paste: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     onData: ReturnType<typeof vi.fn>;
+    attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
     modes: { bracketedPasteMode: boolean };
     written: Uint8Array[];
     osc: Map<number, (data: string) => boolean>;
@@ -48,6 +51,7 @@ vi.mock('@xterm/xterm', () => {
     hasSelection = vi.fn(() => false);
     onData = vi.fn();
     onBinary = vi.fn();
+    attachCustomKeyEventHandler = vi.fn();
     onResize = vi.fn();
     /** Gestionnaires OSC enregistrés, par identifiant (OSC 7 : dossier courant). */
     osc = new Map<number, (data: string) => boolean>();
@@ -391,8 +395,15 @@ describe('TerminalSession', () => {
     emit({ type: 'connected' });
     expect(fake(session).paste).not.toHaveBeenCalled();
     session.sendShellIntegration();
-    expect(fake(session).paste).toHaveBeenCalledWith(SHELL_INTEGRATION);
-    expect(ipc.sshWrite).not.toHaveBeenCalled();
+    // Vers cette seule session (jamais diffusé), comme un collage, sans Entrée ajoutée.
+    await vi.waitFor(() => {
+      expect(ipc.sshWrite).toHaveBeenCalledWith(
+        7,
+        SHELL_INTEGRATION.replace(/\r?\n/g, '\r'),
+        false,
+      );
+    });
+    expect(SHELL_INTEGRATION.endsWith('\n')).toBe(false);
   });
 
   it('ferme les onglets SFTP avec leur terminal', async () => {
@@ -414,15 +425,24 @@ async function registered(sessionId: number, tabId = useSessions.getState().open
   });
   await session.connect(TARGET, { password: 'x' });
   listeners?.onEvent({ type: 'connected' });
-  /** Simule une frappe dans ce terminal. */
-  const type = (data: string) => {
+  const onData = (data: string) => {
     const handler = fake(session).onData.mock.calls[0]?.[0] as (d: string) => void;
     handler(data);
   };
+  /** Simule une frappe de l'utilisateur dans ce terminal (touche puis données). */
+  const type = (data: string) => {
+    const keyHandler = fake(session).attachCustomKeyEventHandler.mock.calls[0]?.[0] as (
+      e: unknown,
+    ) => boolean;
+    keyHandler({});
+    onData(data);
+  };
+  /** Simule une réponse automatique d'xterm (sans frappe). */
+  const report = onData;
   const disconnect = () => {
     listeners?.onEvent({ type: 'disconnected', code: 'ssh.connection_lost' });
   };
-  return { session, tabId, type, disconnect };
+  return { session, tabId, type, report, disconnect };
 }
 
 /** Données envoyées à une session du cœur. */
@@ -492,6 +512,42 @@ describe('diffusion de la saisie (SSH-08)', () => {
     closeAllTabs();
     expect(useBroadcast.getState()).toMatchObject({ targets: [], dialogOpen: false });
     expect(useSnippetRun.getState().pickerTargets).toBeNull();
+  });
+
+  it('ne diffuse pas les réponses automatiques du terminal', async () => {
+    const a = await registered(1);
+    const b = await registered(2);
+    useBroadcast.getState().start([a.tabId, b.tabId]);
+    // Réponse à une requête du serveur, sans frappe : vers sa seule session.
+    a.report('\x1b[12;40R');
+    // Même juste après une frappe, une réponse reconnue n'est pas diffusée.
+    a.type('\x1b[?1;2c');
+    a.type('\x1b]11;rgb:0000/0000/0000\x1b\\');
+    await vi.waitFor(() => {
+      expect(writesTo(1).join('')).toBe('\x1b[12;40R\x1b[?1;2c\x1b]11;rgb:0000/0000/0000\x1b\\');
+    });
+    expect(writesTo(2)).toEqual([]);
+  });
+
+  it('confirme tout collage diffusé et l’encadre selon le mode de chaque cible', async () => {
+    const a = await registered(1);
+    const b = await registered(2);
+    const confirmPaste = vi.fn();
+    a.session.attach(document.createElement('div'), { confirmPaste, confirmLink: vi.fn() });
+    fake(a.session).modes.bracketedPasteMode = true;
+    useBroadcast.getState().start([a.tabId, b.tabId]);
+
+    // Une seule ligne, sans contrôle : confirmation quand même, rien d'envoyé avant.
+    a.session.paste('uptime');
+    expect(confirmPaste).toHaveBeenCalledTimes(1);
+    expect(fake(a.session).paste).not.toHaveBeenCalled();
+
+    a.session.pasteConfirmed(analyzePaste('ls\nwhoami\x1b[201~'));
+    await vi.waitFor(() => {
+      expect(writesTo(2)).toEqual(['ls\rwhoami']);
+    });
+    expect(writesTo(1)).toEqual(['\x1b[200~ls\rwhoami\x1b[201~']);
+    expect(fake(a.session).paste).not.toHaveBeenCalled();
   });
 
   it('refuse d’activer la diffusion avec moins de deux cibles', () => {
