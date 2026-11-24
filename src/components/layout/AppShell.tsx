@@ -1,6 +1,10 @@
 import { HostsView } from '@/features/hosts/HostsView';
 import { KeysView } from '@/features/keys/KeysView';
 import { SettingsView } from '@/features/settings/SettingsView';
+import { BroadcastBanner } from '@/features/broadcast/BroadcastBanner';
+import { BroadcastDialog } from '@/features/broadcast/BroadcastDialog';
+import { SnippetDialogs } from '@/features/snippets/SnippetDialogs';
+import { SnippetsView } from '@/features/snippets/SnippetsView';
 import { SftpSectionView } from '@/features/sftp/SftpSectionView';
 import { SftpTabPanel } from '@/features/sftp/SftpTabPanel';
 import { useShortcuts } from '@/features/shortcuts/useShortcuts';
@@ -16,7 +20,9 @@ import { TabBar } from './TabBar';
 /** Mise en page principale : barre latérale + zone d'onglets (APP-01, SSH-03). */
 export function AppShell() {
   const section = useUi((s) => s.activeSection);
-  const tabs = useSessions((s) => s.tabs);
+  const allTabs = useSessions((s) => s.tabs);
+  // Les panneaux secondaires sont affichés par l'onglet qui les contient (SSH-07).
+  const tabs = allTabs.filter((t) => t.paneOf === null);
   const activeTabId = useSessions((s) => s.activeTabId);
   const homeActive = activeTabId === HOME_TAB_ID;
   useShortcuts();
@@ -25,6 +31,7 @@ export function AppShell() {
     <div className="flex h-full">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
+        <BroadcastBanner />
         <TabBar />
         <main
           id="panel-home"
@@ -37,9 +44,8 @@ export function AppShell() {
           {section === 'hosts' && <HostsView />}
           {section === 'keys' && <KeysView />}
           {section === 'sftp' && <SftpSectionView />}
-          {(section === 'snippets' || section === 'tunnels') && (
-            <SectionPlaceholder section={section} />
-          )}
+          {section === 'snippets' && <SnippetsView />}
+          {section === 'tunnels' && <SectionPlaceholder section={section} />}
         </main>
         {/* Les sessions restent montées quand leur onglet est masqué : le terminal garde son tampon. */}
         {tabs.map((tab) =>
@@ -50,6 +56,8 @@ export function AppShell() {
           ),
         )}
       </div>
+      <BroadcastDialog />
+      <SnippetDialogs />
     </div>
   );
 }

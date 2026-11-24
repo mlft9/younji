@@ -12,7 +12,7 @@ vi.mock('@/lib/ipc', async (importOriginal) => {
   const actual = await importOriginal<typeof IpcModule>();
   return {
     ...actual,
-    appInfo: vi.fn().mockResolvedValue({ name: 'Younji', version: '0.1.0' }),
+    appInfo: vi.fn().mockResolvedValue({ name: 'Younji', version: '0.1.0', commit: 'a14aa94' }),
     vaultChangePassword: vi.fn(),
     vaultSetAutoLock: vi.fn().mockResolvedValue(undefined),
     vaultSnapshot: vi.fn(),

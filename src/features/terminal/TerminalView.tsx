@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { resolveTheme, systemPrefersDark, watchSystemTheme } from '@/features/settings/theme';
 import { openExternalUrl } from '@/lib/ipc';
+import { useBroadcast } from '@/stores/broadcast';
 import { useSessions } from '@/stores/sessions';
 import { useSettings } from '@/stores/settings';
 
@@ -29,6 +30,13 @@ export function TerminalView({ tabId, active, interactive }: TerminalViewProps) 
   const themePreference = useSettings((s) => s.theme);
   const [pasteRequest, setPasteRequest] = useState<PasteAnalysis | null>(null);
   const [linkRequest, setLinkRequest] = useState<string | null>(null);
+  // Cibles de la diffusion si ce terminal en fait partie : le collage leur sera envoyé.
+  const targets = useBroadcast((s) => s.targets);
+  const tabs = useSessions((s) => s.tabs);
+  const broadcastTo =
+    targets.length >= 2 && targets.includes(tabId)
+      ? tabs.filter((tab) => targets.includes(tab.id))
+      : [];
   const [menu, setMenu] = useState<{ x: number; y: number; canCopy: boolean } | null>(null);
 
   useEffect(() => {
@@ -112,6 +120,7 @@ export function TerminalView({ tabId, active, interactive }: TerminalViewProps) 
       {pasteRequest && (
         <PasteConfirmDialog
           analysis={pasteRequest}
+          broadcastTo={broadcastTo}
           onConfirm={() => {
             terminalSession(tabId).pasteConfirmed(pasteRequest);
             setPasteRequest(null);

@@ -16,6 +16,15 @@ export const SHORTCUT_ACTIONS = [
   'copy',
   'paste',
   'sftpPanel',
+  'splitRight',
+  'splitDown',
+  'closePane',
+  'focusLeft',
+  'focusRight',
+  'focusUp',
+  'focusDown',
+  'snippets',
+  'broadcast',
   'lock',
 ] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
@@ -46,10 +55,23 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   { action: 'copy', key: 'C', shift: true },
   { action: 'paste', key: 'V', shift: true },
   { action: 'sftpPanel', key: 'E', shift: true },
+  { action: 'splitRight', key: 'D', shift: true },
+  { action: 'splitDown', key: 'O', shift: true },
+  { action: 'closePane', key: 'X', shift: true },
+  { action: 'focusLeft', key: 'ArrowLeft', shift: true },
+  { action: 'focusRight', key: 'ArrowRight', shift: true },
+  { action: 'focusUp', key: 'ArrowUp', shift: true },
+  { action: 'focusDown', key: 'ArrowDown', shift: true },
+  { action: 'snippets', key: 'S', shift: true },
+  { action: 'broadcast', key: 'I', shift: true },
   { action: 'lock', key: 'L', shift: true },
 ];
 
-/** Action correspondant à une frappe, ou `null`. Toutes exigent Ctrl, sans Alt ni Méta. */
+/**
+ * Action correspondant à une frappe, ou `null`. Toutes exigent Ctrl, sans Alt ni Méta : Ctrl+Alt
+ * est pris par les bureaux Linux (changement d'espace de travail) et correspond à AltGr sous
+ * Windows.
+ */
 export function matchShortcut(event: KeyboardEventLike): ShortcutAction | null {
   if (!event.ctrlKey || event.altKey || event.metaKey) return null;
   const key = event.key.toLowerCase();

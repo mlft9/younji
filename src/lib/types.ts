@@ -10,6 +10,8 @@ export interface AppError {
 export interface AppInfo {
   name: string;
   version: string;
+  /** Commit compilé (7 caractères), pour savoir quelle compilation est testée. */
+  commit: string;
 }
 
 /** Identifiant opaque d'une session SSH, attribué par le cœur. */
@@ -135,7 +137,26 @@ export interface VaultSnapshot {
   groups: GroupEntry[];
   identities: IdentityEntry[];
   keys: KeyEntry[];
+  snippets: SnippetEntry[];
   autoLockMinutes: number;
+}
+
+/** Snippet du coffre (SNP-01). Ce n'est pas un secret : il est affiché et envoyé au terminal. */
+export interface SnippetEntry {
+  id: EntryId;
+  name: string;
+  content: string;
+  description: string;
+  /** Variables `{{nom}}`, dans l'ordre d'apparition (calculées par le cœur). */
+  variables: string[];
+}
+
+/** Création (`id` nul) ou modification d'un snippet. */
+export interface SnippetRequest {
+  id: EntryId | null;
+  name: string;
+  content: string;
+  description: string;
 }
 
 /** Création (`id` nul) ou modification d'un hôte. */

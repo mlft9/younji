@@ -104,7 +104,8 @@
     "reconnect": "Reconnect",
     "closeTab": "Close tab",
     "hostFailedTitle": "Cannot connect to {{host}}",
-    "retry": "Retry"
+    "retry": "Retry",
+    "closePane": "Close pane"
   },
   "hostKey": {
     "presented": "Key presented by the server",
@@ -148,7 +149,11 @@
     "controlCharacters": "Warning: it contains invisible control characters (shown below as symbols).",
     "preview": "Preview of the text to paste",
     "truncated": "Preview truncated: the full text will be pasted.",
-    "confirm": "Paste"
+    "confirm": "Paste",
+    "broadcast_one": "Broadcast active: this text will be pasted in {{count}} session.",
+    "broadcast_other": "Broadcast active: this text will be pasted in these {{count}} sessions, each with its own paste mode.",
+    "confirmBroadcast_one": "Paste in {{count}} session",
+    "confirmBroadcast_other": "Paste in {{count}} sessions"
   },
   "link": {
     "title": "Open this link?",
@@ -174,7 +179,16 @@
       "copy": "Copy selection",
       "paste": "Paste",
       "lock": "Lock the vault",
-      "sftpPanel": "SFTP panel"
+      "sftpPanel": "SFTP panel",
+      "splitRight": "Split pane right",
+      "splitDown": "Split pane down",
+      "closePane": "Close pane",
+      "focusLeft": "Pane on the left",
+      "focusRight": "Pane on the right",
+      "focusUp": "Pane above",
+      "focusDown": "Pane below",
+      "snippets": "Send a snippet",
+      "broadcast": "Broadcast input (enable / stop)"
     }
   },
   "errors": {
@@ -272,6 +286,7 @@
       "invalid_username": "Invalid user name (required when no identity is selected).",
       "invalid_tags": "Invalid tags: at most 16, 32 characters each.",
       "invalid_notes": "Invalid notes: at most 4096 characters.",
+      "invalid_snippet": "Invalid snippet: empty or too long (16 KiB at most), control or invisible characters, more than 32 variables, or description too long (512 characters at most).",
       "invalid_secret": "The password is empty or too long.",
       "identity_incomplete": "An identity needs a password, a key, or both.",
       "invalid_auto_lock": "Lock delay not offered.",
@@ -306,6 +321,11 @@
     },
     "editor": {
       "open_failed": "The text editor could not be started."
+    },
+    "snippets": {
+      "invalid_values": "Each variable needs a value on a single line, without control characters.",
+      "no_target": "Check at least one connected session.",
+      "send_failed": "A target session is no longer connected: the text was not sent everywhere."
     }
   },
   "vault": {
@@ -563,5 +583,72 @@
     },
     "editForce": "Upload anyway (overwrites the server's version)",
     "editStop": "Stop editing (deletes the local copy)"
+  },
+  "panes": {
+    "toolbar": "Pane tools",
+    "splitRight": "Split right",
+    "splitRightShortcut": "Split right (Ctrl+Shift+D)",
+    "splitDown": "Split down",
+    "splitDownShortcut": "Split down (Ctrl+Shift+O)",
+    "close": "Close this pane",
+    "closeShortcut": "Close this pane (Ctrl+Shift+X)",
+    "resize": "Resize panes (arrow keys)",
+    "count_one": "{{count}} pane",
+    "count_other": "{{count}} panes"
+  },
+  "broadcast": {
+    "open": "Broadcast input",
+    "openShortcut": "Broadcast input (Ctrl+Shift+I)",
+    "paneBadge": "Broadcast",
+    "tabBadge": "Broadcast active in this tab",
+    "banner_one": "Input broadcast active to {{count}} session: every keystroke is sent to it.",
+    "banner_other": "Input broadcast active to {{count}} sessions: every keystroke is sent to all of them.",
+    "stop": "Stop broadcast",
+    "title": "Broadcast input",
+    "description": "Whatever you type in one of the checked sessions will be sent to all of them. Check the list of servers before enabling.",
+    "targets": "Sessions that will receive the input",
+    "warning_one": "{{count}} session will receive every keystroke.",
+    "warning_other": "{{count}} sessions will receive every keystroke, including Enter and Ctrl+C.",
+    "needTwo": "Check at least two connected sessions.",
+    "confirm_one": "Broadcast to {{count}} session",
+    "confirm_other": "Broadcast to {{count}} sessions"
+  },
+  "sessionsPicker": {
+    "none": "No connected session."
+  },
+  "snippets": {
+    "intro": "Reusable commands, stored in the encrypted vault. Write {{example}} for a value asked at each send.",
+    "new": "New snippet",
+    "newTitle": "New snippet",
+    "editTitle": "Edit snippet",
+    "name": "Name",
+    "content": "Command",
+    "contentHint": "One or more lines. Variables are written {{example}} (letters, digits, _ and -).",
+    "variablesFound": "Variables asked when sending: {{list}}",
+    "description": "Description (optional)",
+    "noSecrets": "Do not put passwords in it: a snippet is shown in plain text in the application.",
+    "search": "Search snippets",
+    "empty": "No snippets yet.",
+    "noMatch": "No snippet matches the search.",
+    "send": "Send {{name}}",
+    "sendShort": "Send to a session",
+    "edit": "Edit {{name}}",
+    "delete": "Delete {{name}}",
+    "deleteTitle": "Delete this snippet?",
+    "deleteMessage": "The snippet “{{name}}” will be deleted from the vault.",
+    "runInPane": "Send a snippet",
+    "runInPaneShortcut": "Send a snippet (Ctrl+Shift+S)",
+    "pickTitle": "Choose a snippet",
+    "manage": "Manage snippets",
+    "runTitle": "Send “{{name}}”",
+    "variables": "Variable values",
+    "preview": "Text that will be sent",
+    "previewPending": "Fill in each variable (a single line, without control characters).",
+    "multilineWarning": "Several lines: if the shell does not support bracketed paste, each line runs as soon as it is sent.",
+    "targets": "Target sessions",
+    "insert_one": "Insert",
+    "insert_other": "Insert in {{count}} sessions",
+    "execute_one": "Run",
+    "execute_other": "Run in {{count}} sessions"
   }
 }

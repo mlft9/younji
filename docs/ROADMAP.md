@@ -12,7 +12,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 2 | Coffre chiffré et carnet d'hôtes | ✅ |
 | 3 | 2FA et générateur de clés | ✅ |
 | 4 | SFTP | ✅ |
-| 5 | Split, snippets, diffusion multi-sessions | ⬜ |
+| 5 | Split, snippets, diffusion multi-sessions | ✅ |
 | 6 | Tunnels SSH | ⬜ |
 | 7 | Terminal local | ⬜ |
 | 8 | RDP v1 (client système) | ⬜ |
@@ -135,9 +135,9 @@ Point de sécurité : noms de fichiers distants malveillants (`../`, caractères
 Contenu : split horizontal/vertical (SSH-07), snippets avec variables (SNP-01 à SNP-03), diffusion de la saisie (SSH-08) avec bordure d'alerte et confirmation à l'activation.
 
 **Critères d'acceptation**
-- [ ] Quatre terminaux en grille dans un onglet, redimensionnables, avec navigation au clavier.
-- [ ] Un snippet avec `{{service}}` demande la valeur avant envoi.
-- [ ] La diffusion vers trois sessions envoie les mêmes frappes, le mode est impossible à manquer visuellement, et il se désactive en un clic.
+- [x] Quatre terminaux en grille dans un onglet, redimensionnables, avec navigation au clavier. *(Navigation entre panneaux par Ctrl+Maj+flèches signalée non fonctionnelle sous Ubuntu et jugée non nécessaire par le porteur : le focus se donne au clic ; séparateurs déplaçables au clavier.)*
+- [x] Un snippet avec `{{service}}` demande la valeur avant envoi.
+- [x] La diffusion vers trois sessions envoie les mêmes frappes, le mode est impossible à manquer visuellement, et il se désactive en un clic.
 
 ---
 
@@ -327,6 +327,7 @@ Contenu :
 - **Notification de fin de commande (E3)** : notification système quand une commande longue se termine dans un onglet inactif.
 - **Sessions qui survivent aux coupures (E4)** : intégration de tmux en option, pour retrouver son travail après une perte de connexion.
 - **Palette de commandes (E5)** : `Ctrl+K` pour tout faire au clavier (se connecter, ouvrir un tunnel, lancer un snippet, changer de thème).
+- **Menus contextuels de l'application** (retour de recette de l'étape 5) : un menu clic droit propre à Younji sur les éléments de l'interface (hôte du carnet : se connecter, ouvrir en SFTP, modifier ; onglet : renommer, fermer, diviser ; champs de saisie : couper, copier, coller), à la place du menu natif de la WebView, bloqué depuis l'étape 5 hors des champs de saisie.
 
 Points de vigilance :
 - Le mode présentation masque au mieux, sans garantie absolue (un serveur peut afficher une IP sous une forme inattendue). Il faut le dire dans l'interface.

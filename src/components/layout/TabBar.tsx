@@ -1,13 +1,15 @@
-import { House, Plus, X } from 'lucide-react';
+import { House, Plus, Radio, X } from 'lucide-react';
 import { type KeyboardEvent, type RefObject, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { closeTab } from '@/features/terminal/TerminalSession';
 import { cn } from '@/lib/utils';
+import { useBroadcast } from '@/stores/broadcast';
 import {
   defaultTabTitle,
   HOME_TAB_ID,
   MAX_TAB_TITLE,
+  panesOf,
   type SessionTab,
   type TabStatus,
   useSessions,
@@ -57,6 +59,13 @@ function SessionTabItem({
   const renameTab = useSessions((s) => s.renameTab);
   const moveTabTo = useSessions((s) => s.moveTabTo);
   const [editing, setEditing] = useState(false);
+  // Chaîne plutôt que tableau : valeur stable pour le sélecteur.
+  const paneList = useSessions((s) => panesOf(s, tab.id).join('\n'));
+  const panes = paneList.split('\n');
+  const paneCount = panes.length;
+  // Onglet dont au moins un panneau reçoit la diffusion (SSH-08) : signalé dans la barre.
+  const targets = useBroadcast((s) => s.targets);
+  const broadcasting = targets.length >= 2 && targets.some((id) => panes.includes(id));
   const base = defaultTabTitle(tab) ?? t('tabs.newSession');
   const title =
     tab.kind === 'sftp' && !tab.customTitle ? t('sftp.tabTitle', { title: base }) : base;
@@ -92,6 +101,21 @@ function SessionTabItem({
         aria-hidden="true"
         className={cn('size-2 shrink-0 rounded-full', STATUS_COLOR[tab.status])}
       />
+      {broadcasting && (
+        <Radio
+          role="img"
+          aria-label={t('broadcast.tabBadge')}
+          className="size-3.5 shrink-0 text-red-600"
+        />
+      )}
+      {paneCount > 1 && (
+        <span
+          className="shrink-0 rounded-sm bg-muted px-1 text-xs text-muted-foreground"
+          title={t('panes.count', { count: paneCount })}
+        >
+          {paneCount}
+        </span>
+      )}
       {editing ? (
         <input
           // Champ créé à la demande de l'utilisateur (double-clic ou F2) : le focus y va.
@@ -164,7 +188,9 @@ function SessionTabItem({
 /** Zone d'onglets : accueil, puis une session par onglet (SSH-03). */
 export function TabBar() {
   const { t } = useTranslation();
-  const tabs = useSessions((s) => s.tabs);
+  const allTabs = useSessions((s) => s.tabs);
+  // Les panneaux secondaires d'un onglet découpé n'ont pas d'onglet à eux.
+  const tabs = allTabs.filter((tab) => tab.paneOf === null);
   const activeTabId = useSessions((s) => s.activeTabId);
   const activate = useSessions((s) => s.activate);
   const openTab = useSessions((s) => s.openTab);

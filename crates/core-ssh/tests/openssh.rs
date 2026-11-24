@@ -211,6 +211,66 @@ async fn password_session_runs_a_full_terminal() {
     client.exercise_shell().await;
 }
 
+/// Tape `echo =éèàç= | tr = +` caractère par caractère, comme au clavier (sans collage
+/// encadré), et attend le résultat (« + » au lieu de « = », différent de l'écho de la frappe).
+async fn type_accented_letters(client: &mut Client) {
+    for chunk in ["echo ", "=", "é", "è", "à", "ç", "=", " | tr = +", "\r"] {
+        client
+            .handle
+            .write(chunk.as_bytes().to_vec())
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    client.wait_output("+éèàç+\r\n").await;
+}
+
+/// Lettres accentuées tapées au clavier : bash (readline) les reçoit octet par octet. Sans
+/// locale UTF-8 côté serveur, readline les convertit en séquences « Méta » et n'affiche rien
+/// (un collage encadré, lui, passait). Le serveur de test n'a pas de `LANG`, comme une Debian
+/// minimale.
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn typed_accented_letters_reach_the_shell() {
+    let (Some(user), Some(password)) = (
+        required("YOUNJI_TEST_SSH_USER"),
+        required("YOUNJI_TEST_SSH_PASSWORD"),
+    ) else {
+        return;
+    };
+    let Some(mut client) = Client::connect(&user, password_credentials(password)) else {
+        return;
+    };
+    client.accept_and_open().await;
+    type_accented_letters(&mut client).await;
+}
+
+/// Même chose quand le serveur force `LANG=C` après réception (`/etc/default/locale`,
+/// `/etc/environment` ou un profil du shell, fréquent dans les conteneurs Proxmox) : simulé ici
+/// par un nouveau bash lancé avec `LANG=C`. `LC_CTYPE`, envoyé aussi par le client, l'emporte
+/// sur `LANG` pour les caractères.
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn typed_accented_letters_survive_a_server_forcing_lang_c() {
+    let (Some(user), Some(password)) = (
+        required("YOUNJI_TEST_SSH_USER"),
+        required("YOUNJI_TEST_SSH_PASSWORD"),
+    ) else {
+        return;
+    };
+    let Some(mut client) = Client::connect(&user, password_credentials(password)) else {
+        return;
+    };
+    client.accept_and_open().await;
+    client
+        .handle
+        .write(b"export LANG=C; exec bash -i\r".to_vec())
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    type_accented_letters(&mut client).await;
+}
+
 #[tokio::test]
 #[ignore = "nécessite un serveur SSH de test"]
 async fn wrong_password_is_refused() {

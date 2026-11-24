@@ -826,6 +826,9 @@ async fn key_auth(
     Ok(AuthStep::from(result))
 }
 
+/// Locale proposée au shell distant (variables `LANG` et `LC_CTYPE`).
+const SHELL_LOCALE: &str = "C.UTF-8";
+
 async fn open_shell(
     handle: &Handle<ClientHandler>,
     size: TermSize,
@@ -835,6 +838,19 @@ async fn open_shell(
         SshError::ChannelFailed
     };
     let channel = handle.channel_open_session().await.map_err(failed)?;
+    // Locale UTF-8 proposée au serveur, comme le `SendEnv LANG LC_*` d'OpenSSH : sans elle, un
+    // serveur sans locale démarre bash en « C », et readline convertit les lettres accentuées
+    // tapées au clavier en séquences « Méta » (rien ne s'affiche, ou « (arg: 9) » pour « ù »).
+    // `LC_CTYPE` règle seul le traitement des caractères et l'emporte sur `LANG`, que bien des
+    // serveurs réécrivent en `LANG=C` après réception (conteneurs Proxmox) ; `LANG` couvre ceux
+    // qui n'acceptent que lui. `C.UTF-8` ne révèle rien du poste (pas de langue) ; le serveur
+    // peut refuser ces variables (`AcceptEnv`) ou les redéfinir.
+    for name in ["LANG", "LC_CTYPE"] {
+        channel
+            .set_env(false, name, SHELL_LOCALE)
+            .await
+            .map_err(failed)?;
+    }
     channel
         .request_pty(false, TERM, size.cols(), size.rows(), 0, 0, &[])
         .await

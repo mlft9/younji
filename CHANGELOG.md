@@ -48,6 +48,13 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
   - opérations sur le serveur : naviguer, créer un dossier, renommer, supprimer (avec confirmation), modifier les droits (chmod), envoyer et télécharger des fichiers ou des dossiers entiers ;
   - file de transferts avec progression, annulation et bilan ; quand un élément existe déjà, Younji demande s'il faut écraser, ignorer ou garder les deux, avec « appliquer aux suivants » ;
   - ouverture d'un fichier distant dans un éditeur de texte local (Bloc-notes sous Windows), renvoyé automatiquement au serveur à chaque enregistrement. Si le fichier a été modifié sur le serveur entre-temps, rien n'est écrasé sans votre accord.
+- Écran partagé : un onglet de terminal se découpe à droite (Ctrl+Maj+D) ou en bas (Ctrl+Maj+O), jusqu'à 8 panneaux, chacun avec sa propre connexion (ADR-035) :
+  - séparateurs redimensionnables à la souris ou au clavier ;
+  - passage au panneau voisin par Ctrl+Maj+flèches, fermeture d'un panneau par Ctrl+Maj+X ou son bouton ✕ ;
+  - le nom du serveur s'affiche en tête de chaque panneau ;
+  - un nouveau panneau ouvert depuis un hôte du carnet se connecte seul ; depuis une connexion rapide, le mot de passe est redemandé.
+- Diffusion de la saisie : ce que vous tapez part en même temps vers plusieurs sessions choisies, dans n'importe quel onglet (Ctrl+Maj+I ou l'icône antenne). Bandeau rouge en haut de la fenêtre, bordure rouge sur chaque session concernée, arrêt en un clic ou par Ctrl+Maj+I (ADR-036).
+- Snippets : bibliothèque de commandes réutilisables enregistrée dans le coffre, avec recherche, création, modification et suppression. Les variables `{{nom}}` sont demandées au moment de l'envoi, avec un aperçu de la commande finale. Envoi vers la session active ou plusieurs sessions cochées, par Ctrl+Maj+S ou la barre d'outils du terminal, en « Insérer » (sans Entrée) ou « Exécuter » (ADR-037).
 
 ### Modifié
 - Toute l'application, connexion rapide comprise, n'est accessible qu'après le déverrouillage du coffre.
@@ -57,6 +64,12 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Une identité avec une clé seule, refusée par le serveur, peut désormais aboutir aux questions du serveur (mot de passe, code), comme avec OpenSSH.
 - Le temps passé à répondre aux questions du serveur n'est plus compté dans le délai réseau de la connexion ; chaque demande laisse 2 minutes pour répondre.
 - Fermer un onglet de terminal ferme aussi les onglets SFTP qui utilisent sa connexion ; verrouiller l'application arrête aussi les transferts et les éditions en cours.
+- Un coffre enregistré par cette version ne peut plus être ouvert par une version plus ancienne de Younji, qui le refuse sans rien perdre (ADR-037).
+
+### Corrigé
+- Les lettres accentuées tapées au clavier n'apparaissaient pas sur un serveur sans locale (bash en locale « C ») : Younji propose désormais `LANG=C.UTF-8` et `LC_CTYPE=C.UTF-8` à l'ouverture du shell, comme OpenSSH envoie `LANG LC_*` ; `LC_CTYPE` reste efficace quand le serveur réécrit `LANG=C` (conteneurs Proxmox).
+- Un panneau non connecté peut être fermé (bouton ✕ toujours visible sur un onglet découpé).
+- Le menu contextuel natif de la WebView (dont « Recharger », qui fermait toutes les sessions) est bloqué hors des champs de saisie.
 
 ### Sécurité
 - Configuration Tauri durcie : politique de sécurité du contenu (CSP) stricte, aucun contenu distant, pas d'API Tauri globale exposée à l'interface, prototypes JavaScript gelés.
@@ -93,3 +106,6 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Un serveur qui renvoie des listes de fichiers démesurées ou des arborescences trop profondes ne peut pas saturer la mémoire ni figer l'application.
 - Les fichiers glissés depuis le bureau ou l'explorateur du système dans la fenêtre sont ignorés.
 - Les journaux ne contiennent aucun nom ni contenu de fichier transféré.
+- La diffusion de la saisie ne s'active qu'après avoir coché les sessions visées dans une liste qui montre le nom et l'adresse de chaque serveur (seule la session active est cochée d'office). Elle n'est jamais mémorisée, s'arrête au verrouillage, et une session déconnectée en sort définitivement, même après reconnexion.
+- Pendant la diffusion, un collage demande toujours confirmation, même sur une seule ligne, et rappelle les serveurs visés. Seules vos frappes sont diffusées : un serveur ne peut pas faire écrire son terminal dans les autres sessions.
+- Les snippets restent chiffrés dans le coffre. Leur contenu (hormis retours à la ligne et tabulations) et les valeurs des variables ne peuvent contenir ni caractère de contrôle ni caractère invisible (par exemple ceux qui inversent le sens du texte), pour qu'aucune commande cachée ne parte vers le serveur. Un snippet n'est exécuté que sur demande explicite, après aperçu, et seulement dans les sessions cochées.

@@ -1,5 +1,14 @@
 import { create } from 'zustand';
 
+import {
+  type LayoutNode,
+  MAX_PANES,
+  paneIds,
+  removePane,
+  setRatio,
+  type SplitDirection,
+  splitPane as splitLayout,
+} from '@/features/terminal/layout';
 import type { AuthPromptInfo, EntryId, HostKeyInfo, KeyFileRef } from '@/lib/types';
 
 /** Onglet d'accueil (sections de la barre latérale), toujours présent en premier. */
@@ -56,6 +65,11 @@ export interface SessionTab {
   kind: TabKind;
   /** Onglet de terminal dont un onglet SFTP utilise la connexion. */
   parentTabId: string | null;
+  /**
+   * Panneau d'un onglet découpé (SSH-07) : identifiant de l'onglet qui l'affiche. `null` pour
+   * un onglet de la barre d'onglets (qui est aussi le premier panneau de sa disposition).
+   */
+  paneOf: string | null;
   customTitle: string | null;
   /** Dernière cible tentée, pour pré-remplir le formulaire de reconnexion. */
   target: ConnectTarget | null;
@@ -79,8 +93,25 @@ export interface SessionTab {
 }
 
 interface SessionsState {
+  /** Onglets de la barre d'onglets **et** panneaux (`paneOf` non nul), dans l'ordre d'affichage. */
   tabs: SessionTab[];
+  /** Onglet affiché (jamais un panneau secondaire). */
   activeTabId: string;
+  /** Disposition des onglets découpés, par onglet. Absente : un seul panneau, l'onglet lui-même. */
+  layouts: Record<string, LayoutNode>;
+  /** Panneau qui a le focus, par onglet découpé. */
+  focusedPane: Record<string, string>;
+  /** Dernier panneau de terminal qui a eu le focus (cible par défaut des snippets). */
+  lastPaneId: string | null;
+  /**
+   * Découpe le panneau `paneId` et ajoute un nouveau panneau (formulaire de connexion), qui
+   * prend le focus. Renvoie son identifiant, ou `null` (panneau inconnu ou limite atteinte).
+   */
+  splitPane: (paneId: string, direction: SplitDirection) => string | null;
+  /** Change la part d'une séparation. */
+  resizeSplit: (tabId: string, splitId: string, ratio: number) => void;
+  /** Donne le focus à un panneau (et affiche son onglet). */
+  focusPane: (paneId: string) => void;
   /** Ouvre un onglet de connexion et l'active. Renvoie son identifiant. */
   openTab: () => string;
   /**
@@ -88,7 +119,10 @@ interface SessionsState {
    * Renvoie son identifiant, ou `null` si l'onglet parent n'existe pas.
    */
   openSftpTab: (parentTabId: string) => string | null;
-  /** Retire un onglet (la session doit avoir été fermée par l'appelant). */
+  /**
+   * Retire un onglet ou un panneau (la session doit avoir été fermée par l'appelant). Si le
+   * panneau racine d'un onglet découpé est retiré, le panneau suivant devient l'onglet.
+   */
   removeTab: (id: string) => void;
   activate: (id: string) => void;
   /** Active l'onglet suivant (+1) ou précédent (-1), accueil compris, en boucle. */
@@ -108,40 +142,114 @@ function newTabId(): string {
   return `session-${Date.now().toString(36)}-${counter}`;
 }
 
+function blankTerminal(id: string, paneOf: string | null): SessionTab {
+  return {
+    id,
+    kind: 'terminal',
+    parentTabId: null,
+    paneOf,
+    customTitle: null,
+    target: null,
+    status: 'form',
+    errorCode: null,
+    pendingHostKey: null,
+    hostKeyChange: null,
+    pendingPrompt: null,
+    searchOpen: false,
+    sessionId: null,
+    remoteCwd: null,
+    sftpPanelOpen: false,
+  };
+}
+
+/** Onglet (de la barre) qui affiche un onglet ou un panneau. */
+export function rootOf(tab: Pick<SessionTab, 'id' | 'paneOf'>): string {
+  return tab.paneOf ?? tab.id;
+}
+
+/** Panneaux d'un onglet, dans l'ordre de lecture (l'onglet seul s'il n'est pas découpé). */
+export function panesOf(state: Pick<SessionsState, 'layouts'>, tabId: string): string[] {
+  const layout = state.layouts[tabId];
+  return layout ? paneIds(layout) : [tabId];
+}
+
+/** Panneau actif de l'onglet affiché (l'onglet lui-même s'il n'est pas découpé). */
+export function activePaneId(state: Pick<SessionsState, 'activeTabId' | 'focusedPane'>): string {
+  return state.focusedPane[state.activeTabId] ?? state.activeTabId;
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([k]) => k !== key));
+}
+
 export const useSessions = create<SessionsState>()((set, get) => ({
   tabs: [],
   activeTabId: HOME_TAB_ID,
+  layouts: {},
+  focusedPane: {},
+  lastPaneId: null,
 
   openTab: () => {
     const id = newTabId();
-    const tab: SessionTab = {
-      id,
-      kind: 'terminal',
-      parentTabId: null,
-      customTitle: null,
-      target: null,
-      status: 'form',
-      errorCode: null,
-      pendingHostKey: null,
-      hostKeyChange: null,
-      pendingPrompt: null,
-      searchOpen: false,
-      sessionId: null,
-      remoteCwd: null,
-      sftpPanelOpen: false,
-    };
-    set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
+    const tab = blankTerminal(id, null);
+    set((s) => ({
+      // Les panneaux secondaires restent en fin de liste : l'ordre des onglets visibles ne
+      // dépend que des onglets eux-mêmes.
+      tabs: [...s.tabs.filter((t) => t.paneOf === null), tab, ...s.tabs.filter((t) => t.paneOf)],
+      activeTabId: id,
+    }));
     return id;
+  },
+
+  splitPane: (paneId, direction) => {
+    const state = get();
+    const pane = state.tabs.find((t) => t.id === paneId && t.kind === 'terminal');
+    if (!pane) return null;
+    const root = rootOf(pane);
+    const layout: LayoutNode = state.layouts[root] ?? { type: 'pane', id: root };
+    if (paneIds(layout).length >= MAX_PANES) return null;
+    const id = newTabId();
+    set((s) => ({
+      tabs: [...s.tabs, blankTerminal(id, root)],
+      layouts: { ...s.layouts, [root]: splitLayout(layout, paneId, id, direction) },
+      focusedPane: { ...s.focusedPane, [root]: id },
+      activeTabId: root,
+      lastPaneId: id,
+    }));
+    return id;
+  },
+
+  resizeSplit: (tabId, splitId, ratio) => {
+    set((s) => {
+      const layout = s.layouts[tabId];
+      if (!layout) return s;
+      return { layouts: { ...s.layouts, [tabId]: setRatio(layout, splitId, ratio) } };
+    });
+  },
+
+  focusPane: (paneId) => {
+    const pane = get().tabs.find((t) => t.id === paneId);
+    if (pane?.kind !== 'terminal') return;
+    const root = rootOf(pane);
+    const s = get();
+    if (s.activeTabId === root && s.focusedPane[root] === paneId && s.lastPaneId === paneId) return;
+    set({
+      activeTabId: root,
+      focusedPane: { ...s.focusedPane, [root]: paneId },
+      lastPaneId: paneId,
+    });
   },
 
   openSftpTab: (parentTabId) => {
     const parent = get().tabs.find((t) => t.id === parentTabId && t.kind === 'terminal');
     if (!parent) return null;
+    const root = rootOf(parent);
     const id = newTabId();
     const tab: SessionTab = {
       id,
       kind: 'sftp',
       parentTabId,
+      paneOf: null,
       customTitle: null,
       target: parent.target,
       status: 'connected',
@@ -155,9 +263,10 @@ export const useSessions = create<SessionsState>()((set, get) => ({
       sftpPanelOpen: false,
     };
     set((s) => {
-      // Placé juste après le terminal (et ses autres onglets SFTP).
-      let index = s.tabs.findIndex((t) => t.id === parentTabId);
-      while (s.tabs[index + 1]?.parentTabId === parentTabId) index += 1;
+      // Placé juste après l'onglet du terminal (et les onglets SFTP de ses panneaux).
+      const group = new Set(panesOf(s, root));
+      let index = s.tabs.findIndex((t) => t.id === root);
+      while (group.has(s.tabs[index + 1]?.parentTabId ?? '')) index += 1;
       const tabs = [...s.tabs];
       tabs.splice(index + 1, 0, tab);
       return { tabs, activeTabId: id };
@@ -167,26 +276,96 @@ export const useSessions = create<SessionsState>()((set, get) => ({
 
   removeTab: (id) => {
     set((s) => {
-      const index = s.tabs.findIndex((t) => t.id === id);
-      if (index === -1) return s;
-      const tabs = s.tabs.filter((t) => t.id !== id);
-      let activeTabId = s.activeTabId;
-      if (activeTabId === id) {
-        // Comme dans un navigateur : l'onglet voisin de droite, sinon de gauche, sinon l'accueil.
-        activeTabId = tabs[index]?.id ?? tabs[index - 1]?.id ?? HOME_TAB_ID;
+      const removed = s.tabs.find((t) => t.id === id);
+      if (!removed) return s;
+      const root = rootOf(removed);
+      const layout = s.layouts[root];
+      const lastPaneId = s.lastPaneId === id ? null : s.lastPaneId;
+      const remaining = layout ? removePane(layout, id) : null;
+
+      if (!remaining) {
+        // Onglet ordinaire (ou dernier panneau) : retiré de la barre d'onglets.
+        const visible = s.tabs.filter((t) => t.paneOf === null);
+        const index = visible.findIndex((t) => t.id === id);
+        const tabs = s.tabs.filter((t) => t.id !== id);
+        let activeTabId = s.activeTabId;
+        if (activeTabId === id) {
+          // Comme dans un navigateur : l'onglet voisin de droite, sinon de gauche, sinon l'accueil.
+          const rest = visible.filter((t) => t.id !== id);
+          activeTabId = rest[index]?.id ?? rest[index - 1]?.id ?? HOME_TAB_ID;
+        }
+        return {
+          tabs,
+          activeTabId,
+          layouts: withoutKey(s.layouts, id),
+          focusedPane: withoutKey(s.focusedPane, id),
+          lastPaneId,
+        };
       }
-      return { tabs, activeTabId };
+
+      const panes = paneIds(remaining);
+      const single = panes.length === 1;
+      if (removed.paneOf !== null) {
+        // Panneau secondaire : son voisin prend la place.
+        const focused = s.focusedPane[root] === id ? panes[0] : s.focusedPane[root];
+        return {
+          tabs: s.tabs.filter((t) => t.id !== id),
+          layouts: single ? withoutKey(s.layouts, root) : { ...s.layouts, [root]: remaining },
+          focusedPane:
+            single || !focused
+              ? withoutKey(s.focusedPane, root)
+              : { ...s.focusedPane, [root]: focused },
+          lastPaneId,
+        };
+      }
+
+      // Panneau racine d'un onglet découpé : le premier panneau restant devient l'onglet, à la
+      // même place dans la barre, avec le titre personnalisé de l'onglet.
+      const heir = panes[0] ?? root;
+      const tabs = s.tabs
+        .filter((t) => t.id !== heir)
+        .map((t): SessionTab => {
+          if (t.id === id) {
+            const heirTab = s.tabs.find((h) => h.id === heir);
+            return heirTab
+              ? {
+                  ...heirTab,
+                  paneOf: null,
+                  customTitle: removed.customTitle ?? heirTab.customTitle,
+                }
+              : t;
+          }
+          return t.paneOf === root ? { ...t, paneOf: heir } : t;
+        });
+      const focused = s.focusedPane[root] === id ? heir : (s.focusedPane[root] ?? heir);
+      const layouts = withoutKey(s.layouts, root);
+      const focusedPane = withoutKey(s.focusedPane, root);
+      return {
+        tabs,
+        activeTabId: s.activeTabId === root ? heir : s.activeTabId,
+        layouts: single ? layouts : { ...layouts, [heir]: remaining },
+        focusedPane: single ? focusedPane : { ...focusedPane, [heir]: focused },
+        lastPaneId,
+      };
     });
   },
 
   activate: (id) => {
-    if (id === HOME_TAB_ID || get().tabs.some((t) => t.id === id)) {
+    const tab = get().tabs.find((t) => t.id === id);
+    if (id === HOME_TAB_ID || tab?.paneOf === null) {
       set({ activeTabId: id });
+    } else if (tab) {
+      get().focusPane(id);
     }
   },
 
   activateRelative: (delta) => {
-    const ids = [HOME_TAB_ID, ...get().tabs.map((t) => t.id)];
+    const ids = [
+      HOME_TAB_ID,
+      ...get()
+        .tabs.filter((t) => t.paneOf === null)
+        .map((t) => t.id),
+    ];
     const current = Math.max(0, ids.indexOf(get().activeTabId));
     const next = (current + delta + ids.length) % ids.length;
     set({ activeTabId: ids[next] ?? HOME_TAB_ID });
@@ -199,19 +378,20 @@ export const useSessions = create<SessionsState>()((set, get) => ({
 
   moveTab: (id, delta) => {
     set((s) => {
-      const index = s.tabs.findIndex((t) => t.id === id);
+      const visible = s.tabs.filter((t) => t.paneOf === null);
+      const index = visible.findIndex((t) => t.id === id);
       const target = index + delta;
-      if (index === -1 || target < 0 || target >= s.tabs.length) return s;
-      const tabs = [...s.tabs];
-      const [moved] = tabs.splice(index, 1);
-      if (moved) tabs.splice(target, 0, moved);
-      return { tabs };
+      if (index === -1 || target < 0 || target >= visible.length) return s;
+      const [moved] = visible.splice(index, 1);
+      if (moved) visible.splice(target, 0, moved);
+      return { tabs: [...visible, ...s.tabs.filter((t) => t.paneOf !== null)] };
     });
   },
 
   moveTabTo: (id, targetId) => {
-    const target = get().tabs.findIndex((t) => t.id === targetId);
-    const index = get().tabs.findIndex((t) => t.id === id);
+    const visible = get().tabs.filter((t) => t.paneOf === null);
+    const target = visible.findIndex((t) => t.id === targetId);
+    const index = visible.findIndex((t) => t.id === id);
     if (target !== -1 && index !== -1) get().moveTab(id, target - index);
   },
 

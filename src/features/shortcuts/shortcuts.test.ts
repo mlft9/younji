@@ -53,4 +53,24 @@ describe('raccourcis clavier', () => {
       'T',
     ]);
   });
+
+  it('gère les panneaux, les snippets et la diffusion (étape 5)', () => {
+    expect(matchShortcut(key('D', { shiftKey: true }))).toBe('splitRight');
+    expect(matchShortcut(key('O', { shiftKey: true }))).toBe('splitDown');
+    expect(matchShortcut(key('X', { shiftKey: true }))).toBe('closePane');
+    expect(matchShortcut(key('S', { shiftKey: true }))).toBe('snippets');
+    expect(matchShortcut(key('I', { shiftKey: true }))).toBe('broadcast');
+    expect(matchShortcut(key('ArrowLeft', { shiftKey: true }))).toBe('focusLeft');
+    expect(matchShortcut(key('ArrowDown', { shiftKey: true }))).toBe('focusDown');
+    // Sans Maj, les flèches restent au shell (Ctrl+flèche : mot précédent).
+    expect(matchShortcut(key('ArrowLeft'))).toBeNull();
+    // Ctrl+Alt+flèches appartient au bureau (Ubuntu : changement d'espace de travail).
+    expect(matchShortcut(key('ArrowLeft', { altKey: true }))).toBeNull();
+    expect(matchShortcut(key('ArrowLeft', { altKey: true, shiftKey: true }))).toBeNull();
+    expect(shortcutKeys({ action: 'focusUp', key: 'ArrowUp', shift: true })).toEqual([
+      'ctrl',
+      'shift',
+      'ArrowUp',
+    ]);
+  });
 });

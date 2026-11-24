@@ -10,16 +10,19 @@ use crate::APP_NAME;
 pub struct AppInfo {
     name: &'static str,
     version: &'static str,
+    /// Commit compilé (7 caractères hexadécimaux, ou « inconnu »).
+    commit: &'static str,
 }
 
 fn current_app_info() -> AppInfo {
     AppInfo {
         name: APP_NAME,
         version: env!("CARGO_PKG_VERSION"),
+        commit: env!("YOUNJI_BUILD_COMMIT"),
     }
 }
 
-/// Renvoie le nom et la version de l'application. Aucune entrée, aucune donnée sensible.
+/// Renvoie le nom, la version et le commit compilé de l'application. Aucune entrée, aucune donnée sensible.
 #[tauri::command]
 pub fn app_info() -> AppInfo {
     current_app_info()
@@ -34,6 +37,11 @@ mod tests {
         let json = serde_json::to_value(current_app_info()).unwrap();
         assert_eq!(json["name"], "Younji");
         assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
-        assert_eq!(json.as_object().unwrap().len(), 2);
+        let commit = json["commit"].as_str().unwrap();
+        assert!(
+            commit == "inconnu"
+                || (commit.len() == 7 && commit.chars().all(|c| c.is_ascii_hexdigit()))
+        );
+        assert_eq!(json.as_object().unwrap().len(), 3);
     }
 }

@@ -26,7 +26,7 @@ vi.mock('./lib/ipc', async (importOriginal) => {
 
 /** Affiche l'application avec un coffre déverrouillé (la porte du coffre est testée à part). */
 async function setup() {
-  vi.mocked(ipc.appInfo).mockResolvedValue({ name: 'Younji', version: '0.1.0' });
+  vi.mocked(ipc.appInfo).mockResolvedValue({ name: 'Younji', version: '0.1.0', commit: 'a14aa94' });
   vi.mocked(ipc.vaultStatus).mockResolvedValue('unlocked');
   vi.mocked(ipc.vaultSnapshot).mockResolvedValue(EMPTY_SNAPSHOT);
   const result = { user: userEvent.setup(), ...render(<App />) };
@@ -89,7 +89,7 @@ describe('App', () => {
   it('affiche la version renvoyée par le backend', async () => {
     const { user } = await setup();
     await user.click(screen.getByRole('button', { name: 'Paramètres' }));
-    expect(await screen.findByTestId('app-version')).toHaveTextContent('0.1.0');
+    expect(await screen.findByTestId('app-version')).toHaveTextContent('0.1.0 (a14aa94)');
   });
 
   it('reste utilisable si le backend est indisponible', async () => {

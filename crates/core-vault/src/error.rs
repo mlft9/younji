@@ -86,6 +86,9 @@ pub enum VaultError {
     /// Identité utilisée par au moins un hôte : suppression refusée.
     #[error("identité utilisée")]
     IdentityInUse,
+    /// Snippet vide, trop long, avec des caractères de contrôle ou trop de variables.
+    #[error("snippet invalide")]
+    InvalidSnippet,
     /// Données de clés d'hôte trop volumineuses.
     #[error("clés d'hôte trop volumineuses")]
     KnownHostsTooLarge,
@@ -121,6 +124,7 @@ impl VaultError {
             Self::KeyInUse => "vault.key_in_use",
             Self::IdentityInUse => "vault.identity_in_use",
             Self::KnownHostsTooLarge => "vault.known_hosts_too_large",
+            Self::InvalidSnippet => "vault.invalid_snippet",
         }
     }
 
@@ -152,6 +156,7 @@ impl VaultError {
         Self::KeyInUse,
         Self::IdentityInUse,
         Self::KnownHostsTooLarge,
+        Self::InvalidSnippet,
     ];
 }
 

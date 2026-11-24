@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
+import { installContextMenuGuard } from './lib/contextMenu';
 import { installExternalDropGuard } from './features/sftp/dnd';
 import { initI18n } from './i18n';
 import { detectLanguage, systemLanguages } from './i18n/languages';
@@ -11,6 +12,8 @@ import './index.css';
 async function start() {
   // Fichiers déposés depuis le système : ignorés (seul le glisser-déposer interne est géré).
   installExternalDropGuard();
+  // Menu natif de la WebView (Précédent, Recharger…) : bloqué hors des champs de saisie.
+  installContextMenuGuard();
   // Paramètres lus dans settings.json (géré par le cœur) avant le premier rendu : la langue est
   // fixée tout de suite, pour éviter un affichage dans la mauvaise langue.
   await loadSettings();
