@@ -27,6 +27,7 @@ import {
 import type { AuthRequest, SessionEvent, SessionId } from '@/lib/types';
 import { useBroadcast } from '@/stores/broadcast';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
+import { useSnippetRun } from '@/stores/snippetRun';
 import { useSettings } from '@/stores/settings';
 
 import { parseOsc7, SHELL_INTEGRATION } from '@/features/sftp/osc7';
@@ -597,7 +598,9 @@ export function closeTab(tabId: string): void {
  * (verrouillage du coffre, ADR-026). La diffusion s'arrête.
  */
 export function closeAllTabs(): void {
-  useBroadcast.getState().stop();
+  // Diffusion arrêtée et dialogues d'envoi fermés : rien ne survit au verrouillage.
+  useBroadcast.setState({ targets: [], dialogOpen: false });
+  useSnippetRun.getState().close();
   for (const tab of useSessions.getState().tabs) closePane(tab.id);
   for (const [tabId, session] of registry) {
     session.dispose();

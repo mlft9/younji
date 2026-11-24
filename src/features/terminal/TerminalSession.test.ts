@@ -3,6 +3,7 @@ import type * as IpcModule from '@/lib/ipc';
 import type { SessionEvent } from '@/lib/types';
 import { useBroadcast } from '@/stores/broadcast';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
+import { useSnippetRun } from '@/stores/snippetRun';
 import { useSettings } from '@/stores/settings';
 
 import { SHELL_INTEGRATION } from '@/features/sftp/osc7';
@@ -486,8 +487,11 @@ describe('diffusion de la saisie (SSH-08)', () => {
 
     const c = await registered(3);
     useBroadcast.getState().start([a.tabId, c.tabId]);
+    useBroadcast.getState().openDialog();
+    useSnippetRun.getState().openPicker([a.tabId]);
     closeAllTabs();
-    expect(useBroadcast.getState().targets).toEqual([]);
+    expect(useBroadcast.getState()).toMatchObject({ targets: [], dialogOpen: false });
+    expect(useSnippetRun.getState().pickerTargets).toBeNull();
   });
 
   it('refuse d’activer la diffusion avec moins de deux cibles', () => {
