@@ -11,11 +11,13 @@ use std::sync::Arc;
 use core_ssh::{Credentials, ListenScope, SessionHandle, Timeouts, TunnelParams, TunnelSpec};
 use core_vault::{BindScope, EntryId, Tunnel, TunnelInput, TunnelKind, VaultData, VaultError};
 use serde::{Deserialize, Serialize};
-use tauri::State;
 use tauri::ipc::Channel;
+use tauri::{AppHandle, State, WebviewWindow};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::commands::ssh::{ChannelSink, SessionEventDto, close_if_locked, host_target};
 use crate::error::AppError;
+use crate::settings::SettingsStore;
 use crate::state::{SessionId, SessionManager};
 use crate::vault_state::VaultState;
 
@@ -137,15 +139,132 @@ fn tunnel_params(
     })
 }
 
+/// Ce que la confirmation native d'un tunnel exposé affiche, lu dans le coffre.
+struct Exposure {
+    name: String,
+    flag: String,
+    host: String,
+}
+
+/// Tunnel exposé sur toutes les interfaces : description à faire confirmer, sinon `None`.
+fn exposure(data: &VaultData, tunnel_id: EntryId) -> Result<Option<Exposure>, AppError> {
+    let tunnel = data.tunnel(tunnel_id)?;
+    if tunnel.bind_scope != BindScope::AllInterfaces {
+        return Ok(None);
+    }
+    let host = data.host(tunnel.host_id)?;
+    let flag = match tunnel.kind {
+        TunnelKind::Local => format!(
+            "-L 0.0.0.0:{}:{}:{}",
+            tunnel.bind_port, tunnel.dest_host, tunnel.dest_port
+        ),
+        TunnelKind::Remote => format!(
+            "-R 0.0.0.0:{}:{}:{}",
+            tunnel.bind_port, tunnel.dest_host, tunnel.dest_port
+        ),
+        TunnelKind::Dynamic => format!("-D 0.0.0.0:{} (SOCKS5)", tunnel.bind_port),
+    };
+    Ok(Some(Exposure {
+        name: tunnel.name.clone(),
+        flag,
+        host: format!("{} ({})", host.name, host.address),
+    }))
+}
+
+/// Texte de la confirmation native, dans la langue choisie (les deux si « système » : le cœur
+/// ne connaît pas la langue détectée par l'interface).
+fn exposure_message(exposure: &Exposure, language: &str) -> (String, String, String, String) {
+    let fr = format!(
+        "Le tunnel « {} » va écouter sur 0.0.0.0 : toute machine qui peut joindre {} pourra \
+         l'utiliser, sans authentification.\n\n{}\nvia {}",
+        exposure.name,
+        if exposure.flag.starts_with("-R") {
+            "le serveur"
+        } else {
+            "ce PC"
+        },
+        exposure.flag,
+        exposure.host
+    );
+    let en = format!(
+        "The tunnel \"{}\" will listen on 0.0.0.0: any machine that can reach {} will be able \
+         to use it, without authentication.\n\n{}\nvia {}",
+        exposure.name,
+        if exposure.flag.starts_with("-R") {
+            "the server"
+        } else {
+            "this PC"
+        },
+        exposure.flag,
+        exposure.host
+    );
+    match language {
+        "en" => (
+            "Expose a tunnel to the network?".into(),
+            en,
+            "Start".into(),
+            "Cancel".into(),
+        ),
+        "fr" => (
+            "Exposer un tunnel au réseau ?".into(),
+            fr,
+            "Démarrer".into(),
+            "Annuler".into(),
+        ),
+        _ => (
+            "Exposer un tunnel au réseau ? / Expose a tunnel to the network?".into(),
+            format!("{fr}\n\n—\n\n{en}"),
+            "Démarrer / Start".into(),
+            "Annuler / Cancel".into(),
+        ),
+    }
+}
+
+/// Confirmation de l'exposition par une boîte de dialogue **native**, ouverte par le cœur : un
+/// script de la WebView (dépendance compromise, M4) ne peut ni la remplir ni la contourner,
+/// contrairement au drapeau `exposureConfirmed` de l'IPC, qui ne protège que d'un bogue.
+async fn confirm_exposure(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    exposure: &Exposure,
+    language: &str,
+) -> Result<(), AppError> {
+    let (title, message, ok, cancel) = exposure_message(exposure, language);
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(ok, cancel))
+        .parent(window)
+        .show(move |accepted| {
+            let _ = sender.send(accepted);
+        });
+    if receiver.await.map_err(|_| AppError::DIALOG_FAILED)? {
+        Ok(())
+    } else {
+        Err(AppError::TUNNEL_EXPOSURE_REFUSED)
+    }
+}
+
 /// Démarre un tunnel du coffre. Renvoie l'identifiant de sa session ; l'état arrive par
-/// `on_event` (clé d'hôte, questions du serveur, `tunnelReady`, `tunnelStats`, fin).
+/// `on_event` (clé d'hôte, questions du serveur, `tunnelReady`, `tunnelStats`, fin). Un tunnel
+/// exposé sur toutes les interfaces n'est démarré qu'après une confirmation native, à chaque
+/// démarrage (démarrage automatique compris).
 #[tauri::command]
-pub fn tunnel_start(
+pub async fn tunnel_start(
     tunnel_id: EntryId,
     on_event: Channel<SessionEventDto>,
+    app: AppHandle,
+    window: WebviewWindow,
     state: State<'_, SessionManager>,
     vault: State<'_, VaultState>,
+    settings: State<'_, SettingsStore>,
 ) -> Result<SessionId, AppError> {
+    if let Some(exposure) = vault.read(|vault| exposure(vault.data(), tunnel_id))? {
+        let language = settings.load().settings.language;
+        confirm_exposure(&app, &window, &exposure, &language).await?;
+    }
     let known_hosts = state.known_hosts();
     let params = vault.read(|vault| tunnel_params(vault.data(), tunnel_id, known_hosts))?;
     vault.touch();
@@ -286,6 +405,35 @@ mod tests {
             .map(|e| e.code()),
             Some("vault.entry_not_found")
         );
+    }
+
+    #[test]
+    fn only_exposed_tunnels_need_a_native_confirmation() {
+        let (mut data, id) = data_with_tunnel(true, TunnelKind::Dynamic);
+        assert!(exposure(&data, id).unwrap().is_none());
+        let mut tunnel = data.tunnel(id).unwrap().clone();
+        tunnel.bind_scope = BindScope::AllInterfaces;
+        data.upsert_tunnel(TunnelInput {
+            id: Some(id),
+            name: tunnel.name,
+            host_id: tunnel.host_id,
+            kind: tunnel.kind,
+            bind_scope: tunnel.bind_scope,
+            bind_port: tunnel.bind_port,
+            dest_host: tunnel.dest_host,
+            dest_port: tunnel.dest_port,
+            auto_start: true,
+            exposure_confirmed: true,
+        })
+        .unwrap();
+        let exposure = exposure(&data, id).unwrap().unwrap();
+        assert_eq!(exposure.flag, "-D 0.0.0.0:1080 (SOCKS5)");
+        let (_, message, ok, _) = exposure_message(&exposure, "fr");
+        assert!(message.contains("0.0.0.0"));
+        assert!(message.contains("srv.lab"));
+        assert_eq!(ok, "Démarrer");
+        let (title, ..) = exposure_message(&exposure, "system");
+        assert!(title.contains("Expose"));
     }
 
     #[test]

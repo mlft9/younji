@@ -127,6 +127,20 @@ Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de pa
 ### 4.4 Tunnels
 Écoute sur `127.0.0.1` par défaut. Écouter sur `0.0.0.0` demande une confirmation explicite et affiche un indicateur permanent dans la liste des tunnels.
 
+Mise en œuvre (étape 6, ADR-038) :
+- **Connexion dédiée par tunnel**, avec la même vérification TOFU et la même authentification qu'une session ; elle est enregistrée comme une session, donc fermée au verrouillage (ADR-026). L'arrêt ferme l'écoute (port libéré) et toutes les connexions relayées.
+- **Portée d'écoute fermée** : `loopback` (`127.0.0.1`, par défaut) ou `allInterfaces` (`0.0.0.0`). Aucune adresse libre.
+- **Exposition sur `0.0.0.0`** : case de confirmation dans le formulaire, drapeau `exposureConfirmed` exigé par le cœur à l'enregistrement (garde-fou contre un bogue de l'interface), et surtout **boîte de dialogue native ouverte par le cœur à chaque démarrage** d'un tunnel exposé, démarrage automatique compris. Un script de la WebView (M4) ne peut ni la remplir ni la contourner. Indicateur permanent « exposé au réseau » dans la liste.
+- **Canaux ouverts par le serveur** : un `forwarded-tcpip` n'est accepté que sur le port demandé par le tunnel `-R` de la connexion, et il est relié à la destination **configurée**, jamais à l'adresse annoncée par le serveur. Tous les autres canaux ouverts par le serveur (`session`, `direct-tcpip`, `x11`, agent, sockets Unix) sont refusés, pour toutes les connexions (russh les accepte par défaut).
+- **Ressources bornées** : 128 connexions simultanées par tunnel (au-delà : refus, et fermeture explicite d'un canal `-R` déjà accepté), négociation SOCKS5 bornée en taille et en 10 s, connexion à la destination locale d'un `-R` en 10 s. Journaux de refus et de saturation écrits une fois par connexion ou par tunnel.
+- **SOCKS5** (`-D`) : `CONNECT` seul, sans authentification ; `BIND` et `UDP ASSOCIATE` refusés ; noms de domaine résolus par le serveur (aucune requête DNS du poste pour la destination) ; adresse liée non communiquée au client.
+- **Minimisation** : l'adresse du client local n'est pas transmise au serveur (`127.0.0.1:0` comme origine d'un `direct-tcpip`) ; aucune destination ni adresse de client dans les journaux.
+
+Limites connues :
+- Un tunnel sur `127.0.0.1` est utilisable par **tout processus du poste**, y compris d'un autre compte sur une machine partagée (comme `ssh -L`/`-D`) : le proxy SOCKS n'a pas d'authentification.
+- Modifier ou supprimer la définition d'un tunnel démarré n'agit pas sur la connexion en cours : l'interface interdit la modification d'un tunnel démarré et l'arrête avant de le supprimer.
+- Avec `0.0.0.0` pour un `-R`, c'est la configuration du serveur (`GatewayPorts`) qui décide de l'exposition réelle.
+
 ## 5. Durcissement de l'application Tauri
 - La WebView est **non fiable**. Toute entrée IPC est validée côté Rust : types, longueurs, ports (1–65535), chemins canonicalisés, identifiants existants.
 - **Les secrets ne transitent qu'une fois**, de l'interface vers le cœur au moment de la saisie. Ensuite, l'interface manipule des identifiants (`identity_id`). Aucune commande ne renvoie un secret.

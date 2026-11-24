@@ -14,7 +14,7 @@
 pub(crate) mod socks;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -272,6 +272,7 @@ pub(crate) async fn run(spec: TunnelSpec, ctx: TunnelContext<'_>) -> SshError {
         stats,
         limit,
         cancel: tunnel_cancel.clone(),
+        saturation_logged: AtomicBool::new(false),
     };
     let reason = match spec.mode.clone() {
         TunnelMode::Local { host, port } => {
@@ -298,13 +299,17 @@ struct Relays {
     stats: Arc<Stats>,
     limit: Arc<Semaphore>,
     cancel: CancellationToken,
+    /// Saturation déjà signalée dans les journaux : une rafale de connexions ne les remplit pas.
+    saturation_logged: AtomicBool,
 }
 
 impl Relays {
     fn permit(&self) -> Option<OwnedSemaphorePermit> {
         let permit = self.limit.clone().try_acquire_owned().ok();
-        if permit.is_none() {
-            tracing::warn!("tunnel : trop de connexions simultanées, nouvelle connexion refusée");
+        if permit.is_none() && !self.saturation_logged.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                "tunnel : trop de connexions simultanées, nouvelles connexions refusées"
+            );
         }
         permit
     }
@@ -333,7 +338,7 @@ async fn listen(
                 }
             }
             accepted = listener.accept() => {
-                let (stream, peer) = match accepted {
+                let (stream, _peer) = match accepted {
                     Ok(accepted) => accepted,
                     Err(error) => {
                         tracing::debug!(%error, "tunnel : connexion entrante refusée par le système");
@@ -351,7 +356,7 @@ async fn listen(
                     let _guard = guard;
                     tokio::select! {
                         () = cancel.cancelled() => {}
-                        () = relay_outbound(handle, stream, peer, target) => {}
+                        () = relay_outbound(handle, stream, target) => {}
                     }
                 });
             }
@@ -363,7 +368,6 @@ async fn listen(
 async fn relay_outbound(
     handle: Arc<Handle<crate::session::ClientHandler>>,
     mut stream: TcpStream,
-    peer: SocketAddr,
     target: Target,
 ) {
     let (host, port, socks) = match target {
@@ -385,8 +389,10 @@ async fn relay_outbound(
         handle.channel_open_direct_tcpip(
             host,
             u32::from(port),
-            peer.ip().to_string(),
-            u32::from(peer.port()),
+            // Adresse du client local non communiquée au serveur (minimisation) : sur un tunnel
+            // exposé, elle révélerait les machines du réseau du poste.
+            "127.0.0.1",
+            0,
         ),
     )
     .await;
@@ -422,11 +428,13 @@ async fn remote(
     let (sender, mut receiver) = mpsc::channel(FORWARDED_QUEUE);
     let port = u32::from(spec.port);
     // Inscription avant la demande : un canal ouvert aussitôt après l'acceptation est reconnu.
+    // Le garde vide l'emplacement à toute sortie (échec, annulation, fin).
     if let Ok(mut slot) = ctx.forward.lock() {
         *slot = Some(RemoteForward { port, sender });
     } else {
         return SshError::ChannelFailed;
     }
+    let _registration = ForwardRegistration(ctx.forward);
     let address = spec.scope.ip().to_string();
     let requested = tokio::select! {
         () = ctx.cancel.cancelled() => return SshError::SessionClosed,
@@ -454,7 +462,14 @@ async fn remote(
             channel = receiver.recv() => {
                 // Le `ClientHandler` garde un émetteur tant que la connexion vit.
                 let Some(channel) = channel else { break SshError::ConnectionLost };
-                let Some(permit) = relays.permit() else { continue };
+                let Some(permit) = relays.permit() else {
+                    // Déjà accepté : il faut le fermer explicitement (un `Channel` russh
+                    // abandonné reste ouvert des deux côtés).
+                    tokio::spawn(async move {
+                        let _ = channel.close().await;
+                    });
+                    continue;
+                };
                 let guard = relays.stats.opened();
                 let cancel = relays.cancel.clone();
                 let host = dest_host.clone();
@@ -469,9 +484,6 @@ async fn remote(
             }
         }
     };
-    if let Ok(mut slot) = ctx.forward.lock() {
-        slot.take();
-    }
     if !ctx.handle.is_closed() {
         let _ = timeout(
             Duration::from_secs(2),
@@ -480,6 +492,17 @@ async fn remote(
         .await;
     }
     reason
+}
+
+/// Vide l'emplacement `-R` à sa destruction : plus aucun canal n'est accepté pour ce tunnel.
+struct ForwardRegistration<'a>(&'a ForwardSlot);
+
+impl Drop for ForwardRegistration<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut slot) = self.0.lock() {
+            slot.take();
+        }
+    }
 }
 
 /// Relaie un canal `forwarded-tcpip` vers la destination locale configurée.

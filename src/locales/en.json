@@ -328,7 +328,8 @@
       "send_failed": "A target session is no longer connected: the text was not sent everywhere."
     },
     "tunnels": {
-      "no_host": "Choose the SSH host that carries the tunnel."
+      "no_host": "Choose the SSH host that carries the tunnel.",
+      "exposure_refused": "Start cancelled: exposing the tunnel to the network was not confirmed."
     }
   },
   "vault": {
@@ -691,6 +692,7 @@
     "exposureRemote": "This port will be reachable by any machine that can reach the server, if the server allows it (GatewayPorts), without authentication.",
     "exposureSocks": "For a SOCKS proxy, this lets anyone pivot into the server's network on your behalf.",
     "exposureConfirm": "I understand and expose this port to the network",
+    "exposureEachStart": "Younji will also ask for confirmation in a system window every time this tunnel starts, including automatic starts.",
     "autoStart": "Start automatically when the vault is unlocked",
     "equivalent": "OpenSSH equivalent:",
     "needHost": "Add a host to the address book first: a tunnel always goes through a host.",

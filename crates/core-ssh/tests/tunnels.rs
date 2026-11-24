@@ -447,6 +447,16 @@ async fn unrequested_forwarded_channels_are_refused() {
             .await
             .is_err()
     );
+    // Les autres canaux ouverts par le serveur sont refusés eux aussi (russh les accepte par
+    // défaut) : session, agent, direct-tcpip.
+    assert!(server.channel_open_session().await.is_err());
+    assert!(server.channel_open_agent().await.is_err());
+    assert!(
+        server
+            .channel_open_direct_tcpip("127.0.0.1", 22, "203.0.113.5", 1)
+            .await
+            .is_err()
+    );
     tunnel.handle.close();
     assert_eq!(tunnel.wait_end().await, SshError::SessionClosed);
 }

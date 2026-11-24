@@ -328,7 +328,8 @@
       "send_failed": "Une session visée n'est plus connectée : le texte n'a pas été envoyé partout."
     },
     "tunnels": {
-      "no_host": "Choisissez l'hôte SSH qui porte le tunnel."
+      "no_host": "Choisissez l'hôte SSH qui porte le tunnel.",
+      "exposure_refused": "Démarrage annulé : l'exposition du tunnel au réseau n'a pas été confirmée."
     }
   },
   "vault": {
@@ -691,6 +692,7 @@
     "exposureRemote": "Ce port sera joignable par toute machine qui peut atteindre le serveur, si celui-ci l'autorise (GatewayPorts), sans authentification.",
     "exposureSocks": "Pour un proxy SOCKS, cela permet à n'importe qui de rebondir sur le réseau du serveur en votre nom.",
     "exposureConfirm": "Je comprends et j'expose ce port au réseau",
+    "exposureEachStart": "Younji demandera en plus une confirmation dans une fenêtre du système à chaque démarrage de ce tunnel, y compris au démarrage automatique.",
     "autoStart": "Démarrer automatiquement au déverrouillage du coffre",
     "equivalent": "Équivalent OpenSSH :",
     "needHost": "Ajoutez d'abord un hôte dans le carnet : un tunnel passe toujours par un hôte.",

@@ -214,6 +214,7 @@ export function TunnelForm({ tunnel, hosts, onSaved, onClose }: TunnelFormProps)
               />
               {t('tunnels.exposureConfirm')}
             </label>
+            <p className="text-xs text-muted-foreground">{t('tunnels.exposureEachStart')}</p>
           </div>
         )}
         {withDestination && (

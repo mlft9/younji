@@ -618,6 +618,7 @@ impl SessionTask {
             decision_timeout: timeouts.host_key_decision,
             verdict: verdict.clone(),
             forward: self.forward.clone(),
+            refusal_logged: false,
         };
         let config = client_config(&timeouts);
         let handshake = client::connect_stream(config, stream, handler);
@@ -991,9 +992,23 @@ pub(crate) struct ClientHandler {
     verdict: Arc<Mutex<Option<SshError>>>,
     /// Redirection `-R` attendue, s'il y en a une.
     forward: ForwardSlot,
+    /// Refus d'un canal ouvert par le serveur déjà signalé dans les journaux (une fois par
+    /// connexion : un serveur malveillant ne peut pas les remplir).
+    refusal_logged: bool,
 }
 
 impl ClientHandler {
+    /// Refuse un canal ouvert par le serveur, qu'aucune fonction de Younji n'a demandé.
+    async fn refuse_channel(&mut self, kind: &'static str, reply: client::ChannelOpenHandle) {
+        if !self.refusal_logged {
+            self.refusal_logged = true;
+            tracing::warn!(kind, "canal ouvert par le serveur sans demande : refusé");
+        }
+        reply
+            .reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+            .await;
+    }
+
     fn refuse(&self, reason: SshError) -> Result<bool, russh::Error> {
         if let Ok(mut verdict) = self.verdict.lock() {
             verdict.get_or_insert(reason);
@@ -1085,18 +1100,84 @@ impl client::Handler for ClientHandler {
                 reply.accept().await;
                 permit.send(channel);
             }
-            ForwardedVerdict::Unexpected => {
-                tracing::warn!("canal forwarded-tcpip non demandé : refusé");
-                reply
-                    .reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
-                    .await;
-            }
+            ForwardedVerdict::Unexpected => self.refuse_channel("forwarded-tcpip", reply).await,
             ForwardedVerdict::Busy => {
                 reply
                     .reject(russh::ChannelOpenFailure::ResourceShortage)
                     .await;
             }
         }
+        Ok(())
+    }
+
+    // Aucun autre canal ouvert par le serveur n'est demandé par Younji (pas de X11, pas de
+    // transfert d'agent, pas de socket Unix) : russh les accepte par défaut, on les refuse.
+
+    async fn server_channel_open_session(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        self.refuse_channel("session", reply).await;
+        Ok(())
+    }
+
+    async fn server_channel_open_direct_tcpip(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _host_to_connect: &str,
+        _port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        self.refuse_channel("direct-tcpip", reply).await;
+        Ok(())
+    }
+
+    async fn server_channel_open_x11(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        self.refuse_channel("x11", reply).await;
+        Ok(())
+    }
+
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        self.refuse_channel("auth-agent", reply).await;
+        Ok(())
+    }
+
+    async fn server_channel_open_forwarded_streamlocal(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _socket_path: &str,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        self.refuse_channel("forwarded-streamlocal", reply).await;
+        Ok(())
+    }
+
+    async fn server_channel_open_direct_streamlocal(
+        &mut self,
+        _channel: russh::Channel<client::Msg>,
+        _socket_path: &str,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        self.refuse_channel("direct-streamlocal", reply).await;
         Ok(())
     }
 
