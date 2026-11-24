@@ -30,6 +30,7 @@ import type {
   SettingsResponse,
   SftpEvent,
   SftpId,
+  TunnelRequest,
   UploadSource,
   VaultEvent,
   VaultSnapshot,
@@ -228,6 +229,31 @@ export function groupDelete(id: EntryId): Promise<void> {
 /** Crée ou modifie un snippet (SNP-01). */
 export function snippetSave(request: SnippetRequest): Promise<EntryId> {
   return call<EntryId>('snippet_save', { request });
+}
+
+/** Crée ou modifie un tunnel (TUN-02). */
+export function tunnelSave(request: TunnelRequest): Promise<EntryId> {
+  return call<EntryId>('tunnel_save', { request });
+}
+
+/** Supprime un tunnel (l'arrêter d'abord s'il tourne). */
+export function tunnelDelete(id: EntryId): Promise<void> {
+  return call<undefined>('tunnel_delete', { id });
+}
+
+/**
+ * Démarre un tunnel du coffre sur une connexion SSH dédiée. L'état arrive par `onEvent` ; le
+ * tunnel se pilote comme une session (`sshHostKeyDecision`, `sshAuthAnswer`) et s'arrête par
+ * `sshClose`, ce qui libère le port.
+ */
+export async function tunnelStart(
+  tunnelId: EntryId,
+  onEvent: (event: SessionEvent) => void,
+): Promise<SessionId> {
+  return call<SessionId>('tunnel_start', {
+    tunnelId,
+    onEvent: new Channel<SessionEvent>(onEvent),
+  });
 }
 
 /** Supprime un snippet. */

@@ -21,11 +21,6 @@
     "renameLabel": "Tab name",
     "renameHint": "Double-click or F2 to rename, drag to move"
   },
-  "sections": {
-    "comingSoon": "This section will arrive in step {{step}} of the roadmap.",
-    "snippets": "Your reusable commands will appear here.",
-    "tunnels": "Your SSH tunnels will appear here."
-  },
   "settings": {
     "title": "Settings",
     "appearance": "Appearance",
@@ -261,7 +256,10 @@
       "transfer_not_found": "This transfer has finished.",
       "edit_too_large": "File too large to edit (16 MiB at most).",
       "edit_conflict": "The file was modified on the server since it was opened: save not uploaded.",
-      "local_root_forbidden": "This folder cannot be chosen: pick a specific subfolder (not a drive root, nor your whole home folder, nor ~/.ssh or Younji’s data)."
+      "local_root_forbidden": "This folder cannot be chosen: pick a specific subfolder (not a drive root, nor your whole home folder, nor ~/.ssh or Younji’s data).",
+      "tunnel_port_in_use": "This listening port is already in use on this PC. Pick another one or stop the program using it.",
+      "tunnel_bind_failed": "Cannot listen on this port (system-reserved port or address unavailable).",
+      "tunnel_forward_refused": "The server refuses to listen on this port (already taken, reserved, or forwarding disabled in its configuration)."
     },
     "connect": {
       "missing_fields": "Enter the host and the user.",
@@ -297,7 +295,9 @@
       "known_hosts_too_large": "Too many host keys stored.",
       "password_mismatch": "The two passwords do not match.",
       "current_password_required": "Enter the current password.",
-      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart."
+      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart.",
+      "invalid_tunnel": "Invalid tunnel: ports from 1 to 65535, destination required for -L and -R (letters, digits, . - _ : [ ] only).",
+      "tunnel_exposure_unconfirmed": "Listening on 0.0.0.0 requires explicitly confirming the network exposure."
     },
     "book": {
       "no_identity": "This host has no saved identity."
@@ -326,6 +326,9 @@
       "invalid_values": "Each variable needs a value on a single line, without control characters.",
       "no_target": "Check at least one connected session.",
       "send_failed": "A target session is no longer connected: the text was not sent everywhere."
+    },
+    "tunnels": {
+      "no_host": "Choose the SSH host that carries the tunnel."
     }
   },
   "vault": {
@@ -650,5 +653,69 @@
     "insert_other": "Insert in {{count}} sessions",
     "execute_one": "Run",
     "execute_other": "Run in {{count}} sessions"
+  },
+  "tunnels": {
+    "intro": "Port forwarding through a host from your address book. Each tunnel opens its own SSH connection; stopping it frees the port.",
+    "new": "New tunnel",
+    "newTitle": "New tunnel",
+    "editTitle": "Edit tunnel",
+    "name": "Name",
+    "host": "SSH host",
+    "kind": "Type",
+    "kinds": {
+      "local": "Local (-L)",
+      "remote": "Remote (-R)",
+      "dynamic": "Dynamic SOCKS5 (-D)"
+    },
+    "kindShort": {
+      "local": "-L",
+      "remote": "-R",
+      "dynamic": "-D"
+    },
+    "kindHelp": {
+      "local": "A port on this PC leads to a service reachable from the server (e.g. a web page that only listens locally on the VM).",
+      "remote": "A port on the server leads to a service reachable from this PC.",
+      "dynamic": "A SOCKS5 proxy on this PC: a browser using this proxy browses through the server."
+    },
+    "listenLocal": "Listen on this PC",
+    "listenRemote": "Listen on the server",
+    "scopes": {
+      "loopback": "127.0.0.1 — this machine only (recommended)",
+      "allInterfaces": "0.0.0.0 — the whole network"
+    },
+    "bindPort": "Listening port",
+    "destRemote": "Destination (as seen from the server)",
+    "destLocal": "Destination (as seen from this PC)",
+    "destPort": "Destination port",
+    "exposureLocal": "This port will be reachable by any machine that can reach this PC (local network, public Wi-Fi…), without authentication.",
+    "exposureRemote": "This port will be reachable by any machine that can reach the server, if the server allows it (GatewayPorts), without authentication.",
+    "exposureSocks": "For a SOCKS proxy, this lets anyone pivot into the server's network on your behalf.",
+    "exposureConfirm": "I understand and expose this port to the network",
+    "autoStart": "Start automatically when the vault is unlocked",
+    "equivalent": "OpenSSH equivalent:",
+    "needHost": "Add a host to the address book first: a tunnel always goes through a host.",
+    "empty": "No tunnels yet.",
+    "listLabel": "Tunnels",
+    "exposedBadge": "Exposed to the network (0.0.0.0)",
+    "autoStartBadge": "Auto start",
+    "summary": {
+      "local": "{{listen}} on this PC → {{dest}} via {{host}}",
+      "remote": "{{listen}} on {{host}} → {{dest}} on this PC",
+      "dynamic": "SOCKS5 proxy on {{listen}} via {{host}}"
+    },
+    "start": "Start {{name}}",
+    "startShort": "Start",
+    "stop": "Stop {{name}}",
+    "stopShort": "Stop",
+    "edit": "Edit {{name}}",
+    "stopToEdit": "Stop the tunnel to edit it",
+    "delete": "Delete {{name}}",
+    "deleteTitle": "Delete this tunnel?",
+    "deleteMessage": "The tunnel “{{name}}” will be stopped and removed from the vault.",
+    "status": {
+      "stopped": "Stopped",
+      "connecting": "Connecting…",
+      "running": "Active on {{listen}} — {{active}} open connection(s), {{total}} in total"
+    }
   }
 }

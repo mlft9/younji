@@ -75,6 +75,8 @@ export type SessionEvent =
   | ({ type: 'authPrompt' } & AuthPromptInfo)
   | { type: 'keyDeployed'; added: boolean }
   | { type: 'connected' }
+  | { type: 'tunnelReady'; port: number }
+  | { type: 'tunnelStats'; active: number; total: number }
   | { type: 'disconnected'; code: string };
 
 // ------------------------------------------------------------------ coffre (étape 2)
@@ -138,8 +140,40 @@ export interface VaultSnapshot {
   identities: IdentityEntry[];
   keys: KeyEntry[];
   snippets: SnippetEntry[];
+  tunnels: TunnelEntry[];
   autoLockMinutes: number;
 }
+
+/** Type de redirection (TUN-01) : `-L`, `-R` ou `-D` (SOCKS5). */
+export type TunnelKind = 'local' | 'remote' | 'dynamic';
+
+/** Portée de l'écoute (TUN-03) : `127.0.0.1` ou `0.0.0.0`. Aucune adresse libre. */
+export type BindScope = 'loopback' | 'allInterfaces';
+
+/** Tunnel du coffre, rattaché à un hôte du carnet (TUN-02). */
+export interface TunnelEntry {
+  id: EntryId;
+  name: string;
+  hostId: EntryId;
+  kind: TunnelKind;
+  bindScope: BindScope;
+  bindPort: number;
+  /** Destination (vide pour `-D`). */
+  destHost: string;
+  /** Port de destination (0 pour `-D`). */
+  destPort: number;
+  /** Démarrage automatique au déverrouillage du coffre. */
+  autoStart: boolean;
+}
+
+/**
+ * Création (`id` nul) ou modification d'un tunnel. `exposureConfirmed` est exigé par le cœur
+ * pour une écoute sur toutes les interfaces.
+ */
+export type TunnelRequest = Omit<TunnelEntry, 'id'> & {
+  id: EntryId | null;
+  exposureConfirmed: boolean;
+};
 
 /** Snippet du coffre (SNP-01). Ce n'est pas un secret : il est affiché et envoyé au terminal. */
 export interface SnippetEntry {

@@ -21,11 +21,6 @@
     "renameLabel": "Nom de l'onglet",
     "renameHint": "Double-clic ou F2 pour renommer, glisser pour déplacer"
   },
-  "sections": {
-    "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
-    "snippets": "Vos commandes réutilisables apparaîtront ici.",
-    "tunnels": "Vos tunnels SSH apparaîtront ici."
-  },
   "settings": {
     "title": "Paramètres",
     "appearance": "Apparence",
@@ -261,7 +256,10 @@
       "transfer_not_found": "Ce transfert est terminé.",
       "edit_too_large": "Fichier trop volumineux pour l'édition (16 Mio au plus).",
       "edit_conflict": "Le fichier a été modifié sur le serveur depuis son ouverture : enregistrement non envoyé.",
-      "local_root_forbidden": "Ce dossier ne peut pas être choisi : prenez un sous-dossier précis (pas la racine d’un disque, ni le dossier personnel entier, ni ~/.ssh ou les données de Younji)."
+      "local_root_forbidden": "Ce dossier ne peut pas être choisi : prenez un sous-dossier précis (pas la racine d’un disque, ni le dossier personnel entier, ni ~/.ssh ou les données de Younji).",
+      "tunnel_port_in_use": "Ce port d'écoute est déjà utilisé sur ce PC. Choisissez-en un autre ou arrêtez le programme qui l'occupe.",
+      "tunnel_bind_failed": "Impossible d'écouter sur ce port (port réservé au système ou adresse indisponible).",
+      "tunnel_forward_refused": "Le serveur refuse d'écouter sur ce port (port déjà pris, réservé, ou redirection interdite par sa configuration)."
     },
     "connect": {
       "missing_fields": "Renseignez l'hôte et l'utilisateur.",
@@ -297,7 +295,9 @@
       "known_hosts_too_large": "Trop de clés d'hôte enregistrées.",
       "password_mismatch": "Les deux mots de passe ne sont pas identiques.",
       "current_password_required": "Saisissez le mot de passe actuel.",
-      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez."
+      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez.",
+      "invalid_tunnel": "Tunnel invalide : ports de 1 à 65535, destination obligatoire pour -L et -R (lettres, chiffres, . - _ : [ ] seulement).",
+      "tunnel_exposure_unconfirmed": "Écouter sur 0.0.0.0 exige de confirmer explicitement l'exposition au réseau."
     },
     "book": {
       "no_identity": "Cet hôte n'a pas d'identité enregistrée."
@@ -326,6 +326,9 @@
       "invalid_values": "Chaque variable doit avoir une valeur sur une seule ligne, sans caractère de contrôle.",
       "no_target": "Cochez au moins une session connectée.",
       "send_failed": "Une session visée n'est plus connectée : le texte n'a pas été envoyé partout."
+    },
+    "tunnels": {
+      "no_host": "Choisissez l'hôte SSH qui porte le tunnel."
     }
   },
   "vault": {
@@ -650,5 +653,69 @@
     "insert_other": "Insérer dans {{count}} sessions",
     "execute_one": "Exécuter",
     "execute_other": "Exécuter dans {{count}} sessions"
+  },
+  "tunnels": {
+    "intro": "Redirections de ports via un hôte du carnet. Chaque tunnel ouvre sa propre connexion SSH ; l'arrêter libère le port.",
+    "new": "Nouveau tunnel",
+    "newTitle": "Nouveau tunnel",
+    "editTitle": "Modifier le tunnel",
+    "name": "Nom",
+    "host": "Hôte SSH",
+    "kind": "Type",
+    "kinds": {
+      "local": "Local (-L)",
+      "remote": "Distant (-R)",
+      "dynamic": "Dynamique SOCKS5 (-D)"
+    },
+    "kindShort": {
+      "local": "-L",
+      "remote": "-R",
+      "dynamic": "-D"
+    },
+    "kindHelp": {
+      "local": "Un port de ce PC mène à un service joignable depuis le serveur (ex. une page web qui n'écoute qu'en local sur la VM).",
+      "remote": "Un port du serveur mène à un service joignable depuis ce PC.",
+      "dynamic": "Un proxy SOCKS5 sur ce PC : le navigateur configuré avec ce proxy navigue via le serveur."
+    },
+    "listenLocal": "Écoute sur ce PC",
+    "listenRemote": "Écoute sur le serveur",
+    "scopes": {
+      "loopback": "127.0.0.1 — cette machine seulement (recommandé)",
+      "allInterfaces": "0.0.0.0 — tout le réseau"
+    },
+    "bindPort": "Port d'écoute",
+    "destRemote": "Destination (vue depuis le serveur)",
+    "destLocal": "Destination (vue depuis ce PC)",
+    "destPort": "Port de destination",
+    "exposureLocal": "Ce port sera joignable par toute machine qui peut atteindre ce PC (réseau local, Wi-Fi public…), sans authentification.",
+    "exposureRemote": "Ce port sera joignable par toute machine qui peut atteindre le serveur, si celui-ci l'autorise (GatewayPorts), sans authentification.",
+    "exposureSocks": "Pour un proxy SOCKS, cela permet à n'importe qui de rebondir sur le réseau du serveur en votre nom.",
+    "exposureConfirm": "Je comprends et j'expose ce port au réseau",
+    "autoStart": "Démarrer automatiquement au déverrouillage du coffre",
+    "equivalent": "Équivalent OpenSSH :",
+    "needHost": "Ajoutez d'abord un hôte dans le carnet : un tunnel passe toujours par un hôte.",
+    "empty": "Aucun tunnel pour l'instant.",
+    "listLabel": "Tunnels",
+    "exposedBadge": "Exposé au réseau (0.0.0.0)",
+    "autoStartBadge": "Démarrage auto",
+    "summary": {
+      "local": "{{listen}} sur ce PC → {{dest}} via {{host}}",
+      "remote": "{{listen}} sur {{host}} → {{dest}} sur ce PC",
+      "dynamic": "Proxy SOCKS5 sur {{listen}} via {{host}}"
+    },
+    "start": "Démarrer {{name}}",
+    "startShort": "Démarrer",
+    "stop": "Arrêter {{name}}",
+    "stopShort": "Arrêter",
+    "edit": "Modifier {{name}}",
+    "stopToEdit": "Arrêtez le tunnel pour le modifier",
+    "delete": "Supprimer {{name}}",
+    "deleteTitle": "Supprimer ce tunnel ?",
+    "deleteMessage": "Le tunnel « {{name}} » sera arrêté et supprimé du coffre.",
+    "status": {
+      "stopped": "Arrêté",
+      "connecting": "Connexion en cours…",
+      "running": "Actif sur {{listen}} — {{active}} connexion(s) en cours, {{total}} au total"
+    }
   }
 }

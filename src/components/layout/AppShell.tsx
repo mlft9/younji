@@ -9,11 +9,12 @@ import { SftpSectionView } from '@/features/sftp/SftpSectionView';
 import { SftpTabPanel } from '@/features/sftp/SftpTabPanel';
 import { useShortcuts } from '@/features/shortcuts/useShortcuts';
 import { SessionPanel } from '@/features/terminal/SessionPanel';
+import { TunnelBackground } from '@/features/tunnels/TunnelBackground';
+import { TunnelsView } from '@/features/tunnels/TunnelsView';
 import { cn } from '@/lib/utils';
 import { HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useUi } from '@/stores/ui';
 
-import { SectionPlaceholder } from './SectionPlaceholder';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 
@@ -45,7 +46,7 @@ export function AppShell() {
           {section === 'keys' && <KeysView />}
           {section === 'sftp' && <SftpSectionView />}
           {section === 'snippets' && <SnippetsView />}
-          {section === 'tunnels' && <SectionPlaceholder section={section} />}
+          {section === 'tunnels' && <TunnelsView />}
         </main>
         {/* Les sessions restent montées quand leur onglet est masqué : le terminal garde son tampon. */}
         {tabs.map((tab) =>
@@ -58,6 +59,7 @@ export function AppShell() {
       </div>
       <BroadcastDialog />
       <SnippetDialogs />
+      <TunnelBackground />
     </div>
   );
 }
