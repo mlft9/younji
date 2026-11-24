@@ -615,3 +615,111 @@ async fn sftp_round_trip_of_a_recursive_folder() {
     );
     assert!(ops::home(sftp.as_ref()).await.is_err());
 }
+
+// ---------------------------------------------------------------- tunnels (étape 6)
+
+/// Démarre un tunnel avec le compte à mot de passe, accepte la clé d'hôte et attend l'écoute.
+async fn start_tunnel(spec: core_ssh::TunnelSpec) -> Option<(Client, u16)> {
+    let user = required("YOUNJI_TEST_SSH_USER")?;
+    let password = required("YOUNJI_TEST_SSH_PASSWORD")?;
+    let (host, port) = host_and_port()?;
+    let dir = tempfile::tempdir().unwrap();
+    let known_hosts = Arc::new(KnownHosts::new(dir.path().join("known_hosts")));
+    let (tx, rx) = mpsc::unbounded_channel();
+    let params = core_ssh::TunnelParams {
+        target: Target::new(&host, port, &user).unwrap(),
+        credentials: Credentials::password(SecretString::from(password)).unwrap(),
+        spec,
+        known_hosts: known_hosts.clone(),
+        timeouts: Timeouts::default(),
+    };
+    let mut client = Client {
+        handle: SessionHandle::spawn_tunnel(params, Arc::new(Sink(tx))),
+        rx,
+        output: String::new(),
+        _dir: dir,
+        known_hosts,
+    };
+    assert!(matches!(
+        client.next_event().await,
+        SessionEvent::HostKeyUnknown { .. }
+    ));
+    client.handle.decide_host_key(true).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    match client.next_event().await {
+        SessionEvent::TunnelReady { port } => Some((client, port)),
+        other => panic!("événement inattendu : {other:?}"),
+    }
+}
+
+/// Port local libre au moment de l'appel.
+fn free_local_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+/// Lit la bannière `SSH-2.0-…` du serveur SSH joint au bout du tunnel.
+async fn read_ssh_banner(stream: &mut tokio::net::TcpStream) -> String {
+    use tokio::io::AsyncReadExt;
+    let mut buf = [0u8; 64];
+    let read = tokio::time::timeout(WAIT, stream.read(&mut buf))
+        .await
+        .expect("bannière reçue à temps")
+        .unwrap();
+    String::from_utf8_lossy(&buf[..read]).into_owned()
+}
+
+/// `-L` : le sshd de la VM, vu depuis la VM elle-même (127.0.0.1:22), est joint depuis le poste.
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn local_tunnel_reaches_a_service_listening_on_the_server_loopback() {
+    let port = free_local_port();
+    let spec = core_ssh::TunnelSpec::local(
+        core_ssh::ListenScope::Loopback,
+        u32::from(port),
+        "127.0.0.1",
+        22,
+    )
+    .unwrap();
+    let Some((client, listen)) = start_tunnel(spec).await else {
+        return;
+    };
+    assert_eq!(listen, port);
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    assert!(read_ssh_banner(&mut stream).await.starts_with("SSH-2.0-"));
+    client.handle.close();
+}
+
+/// `-D` : une connexion SOCKS5 vers `localhost:22` (résolu par le serveur) aboutit.
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn dynamic_tunnel_connects_through_socks5() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let port = free_local_port();
+    let spec =
+        core_ssh::TunnelSpec::dynamic(core_ssh::ListenScope::Loopback, u32::from(port)).unwrap();
+    let Some((client, _)) = start_tunnel(spec).await else {
+        return;
+    };
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    stream.write_all(&[5, 1, 0]).await.unwrap();
+    let mut method = [0u8; 2];
+    stream.read_exact(&mut method).await.unwrap();
+    assert_eq!(method, [5, 0]);
+    let mut request = vec![5, 1, 0, 3, 9];
+    request.extend_from_slice(b"localhost");
+    request.extend_from_slice(&22u16.to_be_bytes());
+    stream.write_all(&request).await.unwrap();
+    let mut reply = [0u8; 10];
+    stream.read_exact(&mut reply).await.unwrap();
+    assert_eq!(reply[..2], [5, 0]);
+    assert!(read_ssh_banner(&mut stream).await.starts_with("SSH-2.0-"));
+    client.handle.close();
+}
