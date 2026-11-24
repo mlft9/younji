@@ -10,6 +10,8 @@ export interface AppError {
 export interface AppInfo {
   name: string;
   version: string;
+  /** Commit compilé (7 caractères), pour savoir quelle compilation est testée. */
+  commit: string;
 }
 
 /** Identifiant opaque d'une session SSH, attribué par le cœur. */

@@ -56,7 +56,7 @@ function useAppVersion(): string | null {
     let cancelled = false;
     appInfo()
       .then((info) => {
-        if (!cancelled) setVersion(info.version);
+        if (!cancelled) setVersion(`${info.version} (${info.commit})`);
       })
       .catch(() => {
         // Hors de Tauri (navigateur, tests) : la version reste « indisponible ».

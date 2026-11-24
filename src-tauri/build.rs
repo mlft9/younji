@@ -1,4 +1,27 @@
+/// Identifiant court du commit compilé, affiché dans les Paramètres pour savoir quelle
+/// compilation est testée (la version reste la même d'un build à l'autre). En CI,
+/// `GITHUB_SHA` ; en local, `git rev-parse`. Seuls des chiffres hexadécimaux sont retenus.
+fn build_commit() -> String {
+    println!("cargo:rerun-if-env-changed=GITHUB_SHA");
+    println!("cargo:rerun-if-changed=../.git/HEAD");
+    let from_ci = std::env::var("GITHUB_SHA").ok();
+    let from_git = || {
+        std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+    };
+    from_ci
+        .or_else(from_git)
+        .map(|sha| sha.trim().chars().take(7).collect::<String>())
+        .filter(|sha| sha.len() == 7 && sha.chars().all(|c| c.is_ascii_hexdigit()))
+        .unwrap_or_else(|| "inconnu".to_owned())
+}
+
 fn main() {
+    println!("cargo:rustc-env=YOUNJI_BUILD_COMMIT={}", build_commit());
     // Les commandes applicatives sont déclarées ici : Tauri génère pour chacune une permission
     // `allow-<commande>`, et une commande n'est appelable que si une capability l'accorde
     // explicitement (src-tauri/capabilities/). Toute nouvelle commande doit aussi être ajoutée

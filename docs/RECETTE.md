@@ -151,6 +151,7 @@ Connecté en terminal sur `testpwd` :
 - [ ] ⭐ Ctrl+Maj+O dans chaque panneau jusqu'à une grille 2×2 de 4 terminaux connectés. `tty` dans chacun : quatre valeurs différentes.
 - [ ] Clic dans un panneau : il prend le focus (bordure) et la frappe y arrive. *(Ctrl+Maj+flèches : facultatif, signalé non fonctionnel sous Ubuntu.)*
 - [ ] ⭐ Taper `echo éèàçù` au clavier puis Entrée : le texte s'affiche tel quel, y compris sur une Debian sans `LANG`.
+  - Si `(arg: 9)` ou rien ne s'affiche : vérifier d'abord la compilation testée (Paramètres → Version, le commit doit correspondre au dernier commit de la branche), puis dans la session : `echo "LANG=$LANG"` (attendu `C.UTF-8` ou une locale UTF-8 du serveur) et, sur le serveur, `sudo sshd -T | grep -i acceptenv` (attendu : `acceptenv LANG`).
 - [ ] ⭐ Glisser un séparateur à la souris : les panneaux se redimensionnent, `htop` s'adapte.
 - [ ] Tab jusqu'à un séparateur, puis flèches, Début, Fin : il bouge, sans réduire un panneau à zéro.
 - [ ] Le nom du serveur s'affiche en tête de chaque panneau.
