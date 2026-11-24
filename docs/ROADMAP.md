@@ -327,6 +327,7 @@ Contenu :
 - **Notification de fin de commande (E3)** : notification système quand une commande longue se termine dans un onglet inactif.
 - **Sessions qui survivent aux coupures (E4)** : intégration de tmux en option, pour retrouver son travail après une perte de connexion.
 - **Palette de commandes (E5)** : `Ctrl+K` pour tout faire au clavier (se connecter, ouvrir un tunnel, lancer un snippet, changer de thème).
+- **Menus contextuels de l'application** (retour de recette de l'étape 5) : un menu clic droit propre à Younji sur les éléments de l'interface (hôte du carnet : se connecter, ouvrir en SFTP, modifier ; onglet : renommer, fermer, diviser ; champs de saisie : couper, copier, coller), à la place du menu natif de la WebView, bloqué depuis l'étape 5 hors des champs de saisie.
 
 Points de vigilance :
 - Le mode présentation masque au mieux, sans garantie absolue (un serveur peut afficher une IP sous une forme inattendue). Il faut le dire dans l'interface.

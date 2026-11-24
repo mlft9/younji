@@ -50,7 +50,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
   - ouverture d'un fichier distant dans un éditeur de texte local (Bloc-notes sous Windows), renvoyé automatiquement au serveur à chaque enregistrement. Si le fichier a été modifié sur le serveur entre-temps, rien n'est écrasé sans votre accord.
 - Écran partagé : un onglet de terminal se découpe à droite (Ctrl+Maj+D) ou en bas (Ctrl+Maj+O), jusqu'à 8 panneaux, chacun avec sa propre connexion (ADR-035) :
   - séparateurs redimensionnables à la souris ou au clavier ;
-  - passage au panneau voisin par Ctrl+Alt+flèches, fermeture d'un panneau par Ctrl+Maj+X ou son bouton ✕ ;
+  - passage au panneau voisin par Ctrl+Maj+flèches, fermeture d'un panneau par Ctrl+Maj+X ou son bouton ✕ ;
   - le nom du serveur s'affiche en tête de chaque panneau ;
   - un nouveau panneau ouvert depuis un hôte du carnet se connecte seul ; depuis une connexion rapide, le mot de passe est redemandé.
 - Diffusion de la saisie : ce que vous tapez part en même temps vers plusieurs sessions choisies, dans n'importe quel onglet (Ctrl+Maj+I ou l'icône antenne). Bandeau rouge en haut de la fenêtre, bordure rouge sur chaque session concernée, arrêt en un clic ou par Ctrl+Maj+I (ADR-036).

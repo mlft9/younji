@@ -71,7 +71,7 @@ Tout est détaillé dans `docs/ENVIRONNEMENT_DE_TEST.md` §3. En résumé :
 - [ ] Paramètres → langue : bascule FR ↔ EN **sans redémarrer**, tous les textes changent.
 - [ ] Thème : suit le thème Windows par défaut, peut être forcé en clair ou sombre.
 - [ ] Installeur : lancer à la main le workflow **build** sur GitHub (onglet Actions), télécharger l'installeur Windows, l'installer et le lancer.
-- [ ] 🔒 Inspecteur web : en mode développement (`npm run tauri dev`), clic droit → « Inspecter » est **normal** (outil de développement). Dans la version **installée** (`.deb`, AppImage ou installeur Windows produits par `build.yml`), le clic droit ne doit **pas** proposer « Inspecter ».
+- [ ] 🔒 Inspecteur web : en mode développement (`npm run tauri dev`), clic droit **dans un champ de saisie** → « Inspecter » est **normal** (outil de développement). Dans la version **installée** (`.deb`, AppImage ou installeur Windows produits par `build.yml`), le clic droit ne doit **pas** proposer « Inspecter ». Depuis l'étape 5, le clic droit ailleurs dans l'application n'ouvre plus aucun menu natif (ni « Recharger »).
 
 ### Étape 1 — Terminal SSH
 - [ ] ⭐ Connexion rapide sur `testpwd` (mot de passe).
@@ -149,7 +149,7 @@ Connecté en terminal sur `testpwd` :
 **Écran partagé (SSH-07)**
 - [ ] Ouvrir `testpwd` depuis le carnet, puis Ctrl+Maj+D : un deuxième panneau s'ouvre à droite et se connecte seul. Un seul onglet dans la barre.
 - [ ] ⭐ Ctrl+Maj+O dans chaque panneau jusqu'à une grille 2×2 de 4 terminaux connectés. `tty` dans chacun : quatre valeurs différentes.
-- [ ] ⭐ Ctrl+Alt+← / → / ↑ / ↓ : le focus passe au bon voisin et la frappe arrive dans ce panneau. *Si l'écran pivote (raccourci du pilote Intel), le noter.*
+- [ ] ⭐ Ctrl+Maj+← / → / ↑ / ↓ (depuis un terminal) : le focus passe au bon voisin et la frappe arrive dans ce panneau.
 - [ ] ⭐ Glisser un séparateur à la souris : les panneaux se redimensionnent, `htop` s'adapte.
 - [ ] Tab jusqu'à un séparateur, puis flèches, Début, Fin : il bouge, sans réduire un panneau à zéro.
 - [ ] Le nom du serveur s'affiche en tête de chaque panneau.
