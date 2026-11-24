@@ -13,7 +13,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 3 | 2FA et générateur de clés | ✅ |
 | 4 | SFTP | ✅ |
 | 5 | Split, snippets, diffusion multi-sessions | ✅ |
-| 6 | Tunnels SSH | ⬜ |
+| 6 | Tunnels SSH | 🟨 |
 | 7 | Terminal local | ⬜ |
 | 8 | RDP v1 (client système) | ⬜ |
 | 9 | Import OpenSSH, export/import chiffré | ⬜ |
