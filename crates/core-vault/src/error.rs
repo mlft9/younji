@@ -89,6 +89,12 @@ pub enum VaultError {
     /// Snippet vide, trop long, avec des caractères de contrôle ou trop de variables.
     #[error("snippet invalide")]
     InvalidSnippet,
+    /// Tunnel invalide (ports, destination, champs incohérents avec le type).
+    #[error("tunnel invalide")]
+    InvalidTunnel,
+    /// Écoute sur toutes les interfaces sans confirmation explicite.
+    #[error("exposition du tunnel non confirmée")]
+    TunnelExposureUnconfirmed,
     /// Données de clés d'hôte trop volumineuses.
     #[error("clés d'hôte trop volumineuses")]
     KnownHostsTooLarge,
@@ -125,6 +131,8 @@ impl VaultError {
             Self::IdentityInUse => "vault.identity_in_use",
             Self::KnownHostsTooLarge => "vault.known_hosts_too_large",
             Self::InvalidSnippet => "vault.invalid_snippet",
+            Self::InvalidTunnel => "vault.invalid_tunnel",
+            Self::TunnelExposureUnconfirmed => "vault.tunnel_exposure_unconfirmed",
         }
     }
 
@@ -157,6 +165,8 @@ impl VaultError {
         Self::IdentityInUse,
         Self::KnownHostsTooLarge,
         Self::InvalidSnippet,
+        Self::InvalidTunnel,
+        Self::TunnelExposureUnconfirmed,
     ];
 }
 

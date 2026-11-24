@@ -45,6 +45,10 @@ pub const MAX_SNIPPETS: usize = 1_000;
 pub const MAX_SNIPPET_LEN: usize = 16 * 1024;
 /// Longueur maximale de la description d'un snippet, en caractères.
 pub const MAX_SNIPPET_DESCRIPTION_LEN: usize = 512;
+/// Nombre maximal de tunnels.
+pub const MAX_TUNNELS: usize = 256;
+/// Longueur maximale de l'hôte de destination d'un tunnel, en octets.
+pub const MAX_TUNNEL_HOST_LEN: usize = 255;
 /// Nombre maximal de variables distinctes `{{nom}}` dans un snippet.
 pub const MAX_SNIPPET_VARIABLES: usize = 32;
 /// Longueur maximale d'un nom de variable.
@@ -192,6 +196,81 @@ pub struct SnippetInput {
     pub description: String,
 }
 
+/// Type de redirection d'un tunnel (TUN-01).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TunnelKind {
+    /// `-L` : écoute sur le poste, destination joignable depuis le serveur.
+    Local,
+    /// `-R` : écoute sur le serveur, destination joignable depuis le poste.
+    Remote,
+    /// `-D` : proxy SOCKS5 sur le poste, destinations choisies par le client SOCKS.
+    Dynamic,
+}
+
+/// Portée de l'écoute d'un tunnel (TUN-03). Volontairement fermée : aucune adresse libre, on ne
+/// peut pas exposer « un peu » par erreur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BindScope {
+    /// `127.0.0.1` : joignable seulement depuis la machine qui écoute (valeur par défaut).
+    #[default]
+    Loopback,
+    /// `0.0.0.0` : joignable depuis le réseau. Exige une confirmation explicite.
+    AllInterfaces,
+}
+
+/// Tunnel SSH rattaché à un hôte du carnet (TUN-02). Ce n'est pas un secret, mais il révèle
+/// l'infrastructure : il est chiffré au repos avec le reste du coffre.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Tunnel {
+    /// Identifiant.
+    pub id: EntryId,
+    /// Nom affiché.
+    pub name: String,
+    /// Hôte du carnet qui porte la connexion SSH.
+    pub host_id: EntryId,
+    /// Type de redirection.
+    pub kind: TunnelKind,
+    /// Portée de l'écoute (sur le poste pour `-L`/`-D`, sur le serveur pour `-R`).
+    pub bind_scope: BindScope,
+    /// Port d'écoute.
+    pub bind_port: u16,
+    /// Hôte de destination (vide pour `-D`).
+    pub dest_host: String,
+    /// Port de destination (0 pour `-D`).
+    pub dest_port: u16,
+    /// Démarrage automatique au déverrouillage du coffre.
+    pub auto_start: bool,
+}
+
+/// Saisie d'un tunnel (création si `id` est `None`).
+#[derive(Debug, Clone)]
+pub struct TunnelInput {
+    /// Tunnel à modifier, ou `None` pour en créer un.
+    pub id: Option<EntryId>,
+    /// Nom affiché.
+    pub name: String,
+    /// Hôte du carnet.
+    pub host_id: EntryId,
+    /// Type de redirection.
+    pub kind: TunnelKind,
+    /// Portée de l'écoute.
+    pub bind_scope: BindScope,
+    /// Port d'écoute.
+    pub bind_port: u16,
+    /// Hôte de destination (ignoré et vidé pour `-D`).
+    pub dest_host: String,
+    /// Port de destination (ignoré pour `-D`).
+    pub dest_port: u16,
+    /// Démarrage automatique.
+    pub auto_start: bool,
+    /// L'utilisateur a confirmé l'écoute sur toutes les interfaces. Exigé pour
+    /// [`BindScope::AllInterfaces`], à chaque enregistrement.
+    pub exposure_confirmed: bool,
+}
+
 /// Réglages stockés dans le coffre (authentifiés, donc non modifiables hors de l'application).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -223,6 +302,9 @@ pub struct VaultData {
     /// Snippets (étape 5). Absent des coffres créés avant l'étape 5 : liste vide par défaut.
     #[serde(default)]
     snippets: Vec<Snippet>,
+    /// Tunnels (étape 6). Absent des coffres créés avant l'étape 6 : liste vide par défaut.
+    #[serde(default)]
+    tunnels: Vec<Tunnel>,
 }
 
 impl fmt::Debug for VaultData {
@@ -233,6 +315,7 @@ impl fmt::Debug for VaultData {
             .field("identities", &self.identities.len())
             .field("keys", &self.keys.len())
             .field("snippets", &self.snippets.len())
+            .field("tunnels", &self.tunnels.len())
             .finish_non_exhaustive()
     }
 }
@@ -248,6 +331,7 @@ impl Default for VaultData {
             known_hosts: String::new(),
             settings: VaultSettings::default(),
             snippets: Vec::new(),
+            tunnels: Vec::new(),
         }
     }
 }
@@ -375,6 +459,39 @@ fn check_secret(secret: &SecretString) -> Result<(), VaultError> {
     }
 }
 
+/// Hôte de destination d'un tunnel : 1 à 255 octets ASCII parmi lettres, chiffres, `.`, `-`,
+/// `_`, `:`, `[` et `]` (nom DNS, IPv4, IPv6). La forme exacte est revérifiée par `core-ssh`
+/// au démarrage du tunnel.
+fn check_tunnel_host(host: &str) -> bool {
+    !host.is_empty()
+        && host.len() <= MAX_TUNNEL_HOST_LEN
+        && host.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b':' | b'[' | b']')
+        })
+}
+
+/// Champs d'un tunnel cohérents avec son type : destination présente pour `-L`/`-R`, absente
+/// pour `-D` ; ports non nuls.
+fn check_tunnel_fields(
+    kind: TunnelKind,
+    bind_port: u16,
+    dest_host: &str,
+    dest_port: u16,
+) -> Result<(), VaultError> {
+    if bind_port == 0 {
+        return Err(VaultError::InvalidTunnel);
+    }
+    let valid = match kind {
+        TunnelKind::Dynamic => dest_host.is_empty() && dest_port == 0,
+        TunnelKind::Local | TunnelKind::Remote => check_tunnel_host(dest_host) && dest_port != 0,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(VaultError::InvalidTunnel)
+    }
+}
+
 /// Vrai pour un nom de variable admis : `[A-Za-z_][A-Za-z0-9_-]{0,31}`.
 pub fn is_variable_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -466,6 +583,7 @@ impl VaultData {
             || self.keys.len() > MAX_ENTRIES
             || self.known_hosts.len() > MAX_KNOWN_HOSTS_LEN
             || self.snippets.len() > MAX_SNIPPETS
+            || self.tunnels.len() > MAX_TUNNELS
         {
             return Err(VaultError::InvalidFile);
         }
@@ -474,6 +592,21 @@ impl VaultData {
             let valid = clean_name(&snippet.name).is_ok_and(|n| n == snippet.name)
                 && clean_snippet_content(&snippet.content).is_ok_and(|c| c == snippet.content)
                 && check_snippet_description(&snippet.description).is_ok();
+            if !valid {
+                return Err(VaultError::InvalidFile);
+            }
+        }
+        // Les tunnels ouvrent des ports : leurs champs sont revérifiés à chaque chargement.
+        for tunnel in &self.tunnels {
+            let valid = clean_name(&tunnel.name).is_ok_and(|n| n == tunnel.name)
+                && check_tunnel_fields(
+                    tunnel.kind,
+                    tunnel.bind_port,
+                    &tunnel.dest_host,
+                    tunnel.dest_port,
+                )
+                .is_ok()
+                && self.hosts.iter().any(|h| h.id == tunnel.host_id);
             if !valid {
                 return Err(VaultError::InvalidFile);
             }
@@ -591,13 +724,14 @@ impl VaultData {
         }
     }
 
-    /// Supprime un hôte.
+    /// Supprime un hôte, avec ses tunnels (pas de tunnel orphelin).
     pub fn delete_host(&mut self, id: EntryId) -> Result<(), VaultError> {
         let before = self.hosts.len();
         self.hosts.retain(|h| h.id != id);
         if self.hosts.len() == before {
             return Err(VaultError::EntryNotFound);
         }
+        self.tunnels.retain(|t| t.host_id != id);
         Ok(())
     }
 
@@ -755,6 +889,76 @@ impl VaultData {
             return Err(VaultError::KnownHostsTooLarge);
         }
         self.known_hosts = content;
+        Ok(())
+    }
+
+    /// Tunnels.
+    pub fn tunnels(&self) -> &[Tunnel] {
+        &self.tunnels
+    }
+
+    /// Tunnel correspondant à l'identifiant.
+    pub fn tunnel(&self, id: EntryId) -> Result<&Tunnel, VaultError> {
+        self.tunnels
+            .iter()
+            .find(|t| t.id == id)
+            .ok_or(VaultError::EntryNotFound)
+    }
+
+    /// Crée ou modifie un tunnel. Renvoie son identifiant. L'écoute sur toutes les interfaces
+    /// n'est acceptée qu'avec `exposure_confirmed` (TUN-03).
+    pub fn upsert_tunnel(&mut self, input: TunnelInput) -> Result<EntryId, VaultError> {
+        let name = clean_name(&input.name)?;
+        self.host(input.host_id)?;
+        let (dest_host, dest_port) = match input.kind {
+            TunnelKind::Dynamic => (String::new(), 0),
+            TunnelKind::Local | TunnelKind::Remote => {
+                (input.dest_host.trim().to_owned(), input.dest_port)
+            }
+        };
+        check_tunnel_fields(input.kind, input.bind_port, &dest_host, dest_port)?;
+        if input.bind_scope == BindScope::AllInterfaces && !input.exposure_confirmed {
+            return Err(VaultError::TunnelExposureUnconfirmed);
+        }
+        let tunnel = |id| Tunnel {
+            id,
+            name,
+            host_id: input.host_id,
+            kind: input.kind,
+            bind_scope: input.bind_scope,
+            bind_port: input.bind_port,
+            dest_host,
+            dest_port,
+            auto_start: input.auto_start,
+        };
+        match input.id {
+            Some(id) => {
+                let slot = self
+                    .tunnels
+                    .iter_mut()
+                    .find(|t| t.id == id)
+                    .ok_or(VaultError::EntryNotFound)?;
+                *slot = tunnel(id);
+                Ok(id)
+            }
+            None => {
+                if self.tunnels.len() >= MAX_TUNNELS {
+                    return Err(VaultError::TooManyEntries);
+                }
+                let id = Uuid::new_v4();
+                self.tunnels.push(tunnel(id));
+                Ok(id)
+            }
+        }
+    }
+
+    /// Supprime un tunnel.
+    pub fn delete_tunnel(&mut self, id: EntryId) -> Result<(), VaultError> {
+        let before = self.tunnels.len();
+        self.tunnels.retain(|t| t.id != id);
+        if self.tunnels.len() == before {
+            return Err(VaultError::EntryNotFound);
+        }
         Ok(())
     }
 
@@ -1193,5 +1397,146 @@ mod tests {
             }];
             assert_eq!(data.check_loaded(), Err(VaultError::InvalidFile), "{bad:?}");
         }
+    }
+
+    fn tunnel_input(host_id: EntryId, kind: TunnelKind) -> TunnelInput {
+        TunnelInput {
+            id: None,
+            name: "Web".into(),
+            host_id,
+            kind,
+            bind_scope: BindScope::Loopback,
+            bind_port: 8080,
+            dest_host: "127.0.0.1".into(),
+            dest_port: 80,
+            auto_start: false,
+            exposure_confirmed: false,
+        }
+    }
+
+    #[test]
+    fn tunnels_are_created_updated_and_deleted() {
+        let mut data = VaultData::default();
+        let host = data.upsert_host(host_input("srv")).unwrap();
+        let id = data
+            .upsert_tunnel(tunnel_input(host, TunnelKind::Local))
+            .unwrap();
+        assert_eq!(data.tunnel(id).unwrap().bind_scope, BindScope::Loopback);
+        let mut update = tunnel_input(host, TunnelKind::Dynamic);
+        update.id = Some(id);
+        update.dest_host = "ignoré".into();
+        update.dest_port = 99;
+        data.upsert_tunnel(update).unwrap();
+        let tunnel = data.tunnel(id).unwrap();
+        // -D : la destination est vidée, pas conservée en silence.
+        assert_eq!((tunnel.dest_host.as_str(), tunnel.dest_port), ("", 0));
+        data.delete_tunnel(id).unwrap();
+        assert_eq!(data.delete_tunnel(id), Err(VaultError::EntryNotFound));
+        let mut unknown = tunnel_input(host, TunnelKind::Local);
+        unknown.id = Some(Uuid::new_v4());
+        assert_eq!(data.upsert_tunnel(unknown), Err(VaultError::EntryNotFound));
+    }
+
+    #[test]
+    fn tunnel_fields_are_validated() {
+        let mut data = VaultData::default();
+        let host = data.upsert_host(host_input("srv")).unwrap();
+        let cases: [fn(&mut TunnelInput); 7] = [
+            |t| t.bind_port = 0,
+            |t| t.dest_port = 0,
+            |t| t.dest_host = String::new(),
+            |t| t.dest_host = "a b".into(),
+            |t| t.dest_host = "x\u{1b}[31m".into(),
+            |t| t.dest_host = "h".repeat(MAX_TUNNEL_HOST_LEN + 1),
+            |t| t.name = " ".into(),
+        ];
+        for (i, change) in cases.iter().enumerate() {
+            let mut input = tunnel_input(host, TunnelKind::Remote);
+            change(&mut input);
+            assert!(data.upsert_tunnel(input).is_err(), "cas {i}");
+        }
+        let mut ipv6 = tunnel_input(host, TunnelKind::Local);
+        ipv6.dest_host = "[::1]".into();
+        data.upsert_tunnel(ipv6).unwrap();
+        // Hôte inexistant.
+        assert_eq!(
+            data.upsert_tunnel(tunnel_input(Uuid::new_v4(), TunnelKind::Local)),
+            Err(VaultError::EntryNotFound)
+        );
+    }
+
+    #[test]
+    fn exposure_needs_an_explicit_confirmation() {
+        let mut data = VaultData::default();
+        let host = data.upsert_host(host_input("srv")).unwrap();
+        let mut input = tunnel_input(host, TunnelKind::Dynamic);
+        input.bind_scope = BindScope::AllInterfaces;
+        assert_eq!(
+            data.upsert_tunnel(input.clone()),
+            Err(VaultError::TunnelExposureUnconfirmed)
+        );
+        input.exposure_confirmed = true;
+        let id = data.upsert_tunnel(input).unwrap();
+        assert_eq!(
+            data.tunnel(id).unwrap().bind_scope,
+            BindScope::AllInterfaces
+        );
+    }
+
+    #[test]
+    fn deleting_a_host_deletes_its_tunnels() {
+        let mut data = VaultData::default();
+        let host = data.upsert_host(host_input("a")).unwrap();
+        let other = data.upsert_host(host_input("b")).unwrap();
+        data.upsert_tunnel(tunnel_input(host, TunnelKind::Local))
+            .unwrap();
+        let kept = data
+            .upsert_tunnel(tunnel_input(other, TunnelKind::Local))
+            .unwrap();
+        data.delete_host(host).unwrap();
+        assert_eq!(data.tunnels().len(), 1);
+        assert_eq!(data.tunnels()[0].id, kept);
+        data.check_loaded().unwrap();
+    }
+
+    #[test]
+    fn vault_without_tunnels_still_loads() {
+        let mut json = serde_json::to_value(VaultData::default()).unwrap();
+        json.as_object_mut().unwrap().remove("tunnels");
+        let data: VaultData = serde_json::from_value(json).unwrap();
+        assert!(data.tunnels().is_empty());
+        data.check_loaded().unwrap();
+    }
+
+    #[test]
+    fn invalid_tunnels_are_rejected_on_load() {
+        let mut data = VaultData::default();
+        let host = data.upsert_host(host_input("srv")).unwrap();
+        let id = data
+            .upsert_tunnel(tunnel_input(host, TunnelKind::Local))
+            .unwrap();
+        let good = data.tunnel(id).unwrap().clone();
+        data.check_loaded().unwrap();
+        let bad: [fn(&mut Tunnel); 4] = [
+            |t| t.bind_port = 0,
+            |t| t.host_id = Uuid::new_v4(),
+            |t| t.dest_host = "a\nb".into(),
+            |t| t.kind = TunnelKind::Dynamic,
+        ];
+        for (i, change) in bad.iter().enumerate() {
+            let mut tunnel = good.clone();
+            change(&mut tunnel);
+            data.tunnels = vec![tunnel];
+            assert_eq!(data.check_loaded(), Err(VaultError::InvalidFile), "cas {i}");
+        }
+        data.tunnels = vec![good; MAX_TUNNELS + 1];
+        assert_eq!(data.check_loaded(), Err(VaultError::InvalidFile));
+    }
+
+    #[test]
+    fn tunnel_json_uses_camel_case_scopes() {
+        let json = serde_json::to_value(BindScope::AllInterfaces).unwrap();
+        assert_eq!(json, "allInterfaces");
+        assert!(serde_json::from_value::<BindScope>(serde_json::json!("0.0.0.0")).is_err());
     }
 }
