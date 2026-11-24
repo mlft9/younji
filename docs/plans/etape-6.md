@@ -64,3 +64,9 @@ Aucune. SOCKS5 (`CONNECT` seul) tient en une centaine de lignes ; une crate SOCK
 9. **Destination `-L`/`-D` résolue par le serveur** (comme OpenSSH) : le poste ne fait aucune requête DNS pour la destination.
 
 ## 7. Écarts en cours d'étape
+1. **Confirmation native de l'exposition** (revue de sécurité, 1re passe, Moyenne) : le drapeau `exposureConfirmed` venant de l'IPC ne protège pas d'une WebView compromise (M4). Ajout d'une boîte de dialogue **native, ouverte par le cœur**, à chaque démarrage d'un tunnel sur `0.0.0.0` (démarrage automatique compris). Le drapeau reste comme garde-fou contre un bogue de l'interface.
+2. **Course entre confirmation et démarrage** (2e passe, Moyenne) : le cœur garde la définition et l'hôte affichés (sans secret), relit le coffre après la confirmation et **refuse** le démarrage s'ils ont changé (`tunnels.changed`). Une seule confirmation ouverte à la fois (`tunnels.confirmation_pending`). Noms de tunnel sans caractères invisibles, texte de la boîte nettoyé.
+3. **Refus de tous les canaux ouverts par le serveur** (1re passe, Faible) : `session`, `direct-tcpip`, `x11`, agent, sockets Unix, en plus des `forwarded-tcpip` non demandés ; pour toutes les connexions (shells et déploiements compris).
+4. **Divers** : canal `-R` déjà accepté au-delà de 128 connexions fermé explicitement ; journaux de refus et de saturation écrits une fois ; adresse du client local non transmise au serveur (`127.0.0.1:0`) ; garde `Drop` sur l'emplacement `-R`.
+5. **Section provisoire supprimée** : `SectionPlaceholder` et les chaînes `sections.*` n'ont plus d'usage (la dernière section provisoire était Tunnels).
+6. **Tests OpenSSH** : `-L` et `-D` ajoutés (ignorés sans `YOUNJI_TEST_*`) ; `-R` n'est couvert que contre le serveur russh local, d'où les tests manuels 9 à 11.
