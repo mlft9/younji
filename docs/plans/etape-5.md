@@ -59,4 +59,8 @@ Aucune. Les séparateurs redimensionnables sont écrits à la main (quelques diz
 
 ## 7. Écarts en cours d'étape
 
-(À compléter.)
+- **Base de la branche** : rebasée sur `claude/epic-archimedes-fhqq6d`, qui contient la validation de l'étape 4 et les mises à jour `cookie` / `url` (RUSTSEC-2026-0592 et 0594) pas encore fusionnées dans `main`. Sans elles, `cargo deny check` échoue.
+- **Collage en diffusion** (revue de sécurité, Moyenne) : la première version recopiait vers les cibles les octets produits par le terminal source, encadrés selon **son** mode de collage. Désormais tout collage diffusé est confirmé (le dialogue liste les serveurs), et chaque cible reçoit le texte encadré selon son propre mode.
+- **Seule la saisie de l'utilisateur est diffusée** (revue, Faible) : les réponses automatiques d'xterm (position du curseur, identification, couleurs, focus), les rapports souris et l'intégration au prompt restent dans leur session. Limite : Maj+F3 produit la même séquence qu'une réponse de position du curseur et n'est pas diffusé.
+- **Snippets revérifiés au chargement** et **caractères invisibles** (bidirectionnels, largeur nulle, BOM) refusés dans le contenu et les valeurs (revue, Faible).
+- **En-tête de panneau** : en grille, chaque panneau affiche le nom de son serveur (en rouge avec « DIFFUSION » s'il reçoit la diffusion) ; sans cela, on ne savait pas quel panneau visait quel serveur.
