@@ -214,7 +214,9 @@ export function SettingsView() {
                     <span key={part}>
                       {index > 0 && '+'}
                       <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
-                        {part === 'ctrl' || part === 'shift' ? t(`shortcuts.keys.${part}`) : part}
+                        {part === 'ctrl' || part === 'shift' || part === 'alt'
+                          ? t(`shortcuts.keys.${part}`)
+                          : part}
                       </kbd>
                     </span>
                   ))}

@@ -104,7 +104,8 @@
     "reconnect": "Reconnecter",
     "closeTab": "Fermer l'onglet",
     "hostFailedTitle": "Connexion à {{host}} impossible",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "closePane": "Fermer le panneau"
   },
   "hostKey": {
     "presented": "Clé présentée par le serveur",
@@ -158,7 +159,8 @@
   "shortcuts": {
     "keys": {
       "ctrl": "Ctrl",
-      "shift": "Maj"
+      "shift": "Maj",
+      "alt": "Alt"
     },
     "title": "Raccourcis clavier",
     "description": "Ils utilisent Ctrl+Maj pour laisser au shell ses propres raccourcis (Ctrl+C, Ctrl+R, Ctrl+W…).",
@@ -174,7 +176,16 @@
       "copy": "Copier la sélection",
       "paste": "Coller",
       "lock": "Verrouiller le coffre",
-      "sftpPanel": "Panneau SFTP"
+      "sftpPanel": "Panneau SFTP",
+      "splitRight": "Diviser le panneau à droite",
+      "splitDown": "Diviser le panneau en bas",
+      "closePane": "Fermer le panneau",
+      "focusLeft": "Panneau de gauche",
+      "focusRight": "Panneau de droite",
+      "focusUp": "Panneau du dessus",
+      "focusDown": "Panneau du dessous",
+      "snippets": "Envoyer un snippet",
+      "broadcast": "Diffusion de la saisie (activer / arrêter)"
     }
   },
   "errors": {
@@ -307,6 +318,11 @@
     },
     "editor": {
       "open_failed": "L'éditeur de texte n'a pas pu être lancé."
+    },
+    "snippets": {
+      "invalid_values": "Chaque variable doit avoir une valeur sur une seule ligne, sans caractère de contrôle.",
+      "no_target": "Cochez au moins une session connectée.",
+      "send_failed": "Une session visée n'est plus connectée : le texte n'a pas été envoyé partout."
     }
   },
   "vault": {
@@ -564,5 +580,72 @@
     },
     "editForce": "Renvoyer quand même (écrase la version du serveur)",
     "editStop": "Arrêter l'édition (supprime la copie locale)"
+  },
+  "panes": {
+    "toolbar": "Outils du panneau",
+    "splitRight": "Diviser à droite",
+    "splitRightShortcut": "Diviser à droite (Ctrl+Maj+D)",
+    "splitDown": "Diviser en bas",
+    "splitDownShortcut": "Diviser en bas (Ctrl+Maj+O)",
+    "close": "Fermer ce panneau",
+    "closeShortcut": "Fermer ce panneau (Ctrl+Maj+X)",
+    "resize": "Redimensionner les panneaux (flèches)",
+    "count_one": "{{count}} panneau",
+    "count_other": "{{count}} panneaux"
+  },
+  "broadcast": {
+    "open": "Diffusion de la saisie",
+    "openShortcut": "Diffusion de la saisie (Ctrl+Maj+I)",
+    "paneBadge": "Diffusion",
+    "tabBadge": "Diffusion active dans cet onglet",
+    "banner_one": "Diffusion de la saisie active vers {{count}} session : chaque frappe y est envoyée.",
+    "banner_other": "Diffusion de la saisie active vers {{count}} sessions : chaque frappe est envoyée à toutes.",
+    "stop": "Arrêter la diffusion",
+    "title": "Diffuser la saisie",
+    "description": "Ce que vous taperez dans l'une des sessions cochées sera envoyé à toutes. Vérifiez la liste des serveurs avant d'activer.",
+    "targets": "Sessions qui recevront la saisie",
+    "warning_one": "{{count}} session recevra chaque frappe.",
+    "warning_other": "{{count}} sessions recevront chaque frappe, y compris Entrée et Ctrl+C.",
+    "needTwo": "Cochez au moins deux sessions connectées.",
+    "confirm_one": "Diffuser vers {{count}} session",
+    "confirm_other": "Diffuser vers {{count}} sessions"
+  },
+  "sessionsPicker": {
+    "none": "Aucune session connectée."
+  },
+  "snippets": {
+    "intro": "Commandes réutilisables, enregistrées dans le coffre chiffré. Écrivez {{example}} pour une valeur demandée à chaque envoi.",
+    "new": "Nouveau snippet",
+    "newTitle": "Nouveau snippet",
+    "editTitle": "Modifier le snippet",
+    "name": "Nom",
+    "content": "Commande",
+    "contentHint": "Une ou plusieurs lignes. Les variables s'écrivent {{example}} (lettres, chiffres, _ et -).",
+    "variablesFound": "Variables demandées à l'envoi : {{list}}",
+    "description": "Description (facultative)",
+    "noSecrets": "N'y mettez pas de mot de passe : un snippet est affiché en clair dans l'application.",
+    "search": "Rechercher un snippet",
+    "empty": "Aucun snippet pour l'instant.",
+    "noMatch": "Aucun snippet ne correspond à la recherche.",
+    "send": "Envoyer {{name}}",
+    "sendShort": "Envoyer vers une session",
+    "edit": "Modifier {{name}}",
+    "delete": "Supprimer {{name}}",
+    "deleteTitle": "Supprimer ce snippet ?",
+    "deleteMessage": "Le snippet « {{name}} » sera supprimé du coffre.",
+    "runInPane": "Envoyer un snippet",
+    "runInPaneShortcut": "Envoyer un snippet (Ctrl+Maj+S)",
+    "pickTitle": "Choisir un snippet",
+    "manage": "Gérer les snippets",
+    "runTitle": "Envoyer « {{name}} »",
+    "variables": "Valeurs des variables",
+    "preview": "Texte qui sera envoyé",
+    "previewPending": "Renseignez chaque variable (une seule ligne, sans caractère de contrôle).",
+    "multilineWarning": "Plusieurs lignes : si le shell ne gère pas le collage encadré, chaque ligne s'exécutera dès l'envoi.",
+    "targets": "Sessions visées",
+    "insert_one": "Insérer",
+    "insert_other": "Insérer dans {{count}} sessions",
+    "execute_one": "Exécuter",
+    "execute_other": "Exécuter dans {{count}} sessions"
   }
 }

@@ -53,4 +53,23 @@ describe('raccourcis clavier', () => {
       'T',
     ]);
   });
+
+  it('gère les panneaux, les snippets et la diffusion (étape 5)', () => {
+    expect(matchShortcut(key('D', { shiftKey: true }))).toBe('splitRight');
+    expect(matchShortcut(key('O', { shiftKey: true }))).toBe('splitDown');
+    expect(matchShortcut(key('X', { shiftKey: true }))).toBe('closePane');
+    expect(matchShortcut(key('S', { shiftKey: true }))).toBe('snippets');
+    expect(matchShortcut(key('I', { shiftKey: true }))).toBe('broadcast');
+    expect(matchShortcut(key('ArrowLeft', { altKey: true }))).toBe('focusLeft');
+    expect(matchShortcut(key('ArrowDown', { altKey: true }))).toBe('focusDown');
+    // Sans Alt, les flèches restent au shell (Ctrl+flèche : mot précédent).
+    expect(matchShortcut(key('ArrowLeft'))).toBeNull();
+    // Alt+Maj n'est pas une combinaison de navigation.
+    expect(matchShortcut(key('ArrowLeft', { altKey: true, shiftKey: true }))).toBeNull();
+    expect(shortcutKeys({ action: 'focusUp', key: 'ArrowUp', shift: false, alt: true })).toEqual([
+      'ctrl',
+      'alt',
+      'ArrowUp',
+    ]);
+  });
 });

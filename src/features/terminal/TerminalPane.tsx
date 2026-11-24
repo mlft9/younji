@@ -1,4 +1,4 @@
-import { FolderTree, LoaderCircle, RotateCw, X } from 'lucide-react';
+import { LoaderCircle, RotateCw, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -9,13 +9,14 @@ import { HostKeyDialog } from '@/features/connect/HostKeyDialog';
 import { QuickConnectForm } from '@/features/connect/QuickConnectForm';
 import { SftpSidePanel } from '@/features/sftp/SftpSidePanel';
 import { cn } from '@/lib/utils';
+import { useBroadcast } from '@/stores/broadcast';
 import { type ConnectTarget, HOME_TAB_ID, type SessionTab, useSessions } from '@/stores/sessions';
 import { useUi } from '@/stores/ui';
 
-import { closeTab, terminalSession } from './TerminalSession';
+import { PaneToolbar } from './PaneToolbar';
+import { closePane, terminalSession } from './TerminalSession';
 import { TerminalView } from './TerminalView';
 
-/** Contenu d'un onglet de session : terminal et écran adapté à l'état de la connexion. */
 /** Reconnexion : un hôte du carnet se reconnecte directement avec son identité enregistrée. */
 function reconnect(tab: SessionTab, target: ConnectTarget | null): void {
   if (target?.hostId) {
@@ -25,36 +26,56 @@ function reconnect(tab: SessionTab, target: ConnectTarget | null): void {
   }
 }
 
-export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean }) {
+interface TerminalPaneProps {
+  tab: SessionTab;
+  /** Onglet affiché. */
+  active: boolean;
+  /** Panneau qui a le focus dans son onglet (toujours vrai pour un onglet non découpé). */
+  focused: boolean;
+  /** L'onglet contient plusieurs panneaux. */
+  split: boolean;
+}
+
+/**
+ * Un panneau de terminal (SSH-07) : terminal, écran adapté à l'état de la connexion, barre
+ * d'outils et, en diffusion (SSH-08), une bordure rouge épaisse impossible à manquer.
+ */
+export function TerminalPane({ tab, active, focused, split }: TerminalPaneProps) {
   const { t } = useTranslation();
   const target = tab.target;
   const fromBook = Boolean(target?.hostId);
+  const broadcasting = useBroadcast((s) => s.targets.length >= 2 && s.targets.includes(tab.id));
 
   return (
     <div
-      role="tabpanel"
-      id={`panel-${tab.id}`}
-      aria-labelledby={`tab-${tab.id}`}
-      hidden={!active}
-      className={cn('flex min-h-0 flex-1', !active && 'hidden')}
+      data-pane-id={tab.id}
+      className={cn(
+        'flex h-full min-h-0 w-full min-w-0',
+        split && 'border',
+        split && focused && !broadcasting && 'border-primary/70',
+        broadcasting && 'border-4 border-red-600',
+      )}
+      onFocusCapture={() => {
+        useSessions.getState().focusPane(tab.id);
+      }}
+      onPointerDown={() => {
+        useSessions.getState().focusPane(tab.id);
+      }}
     >
       <div className="relative min-h-0 min-w-0 flex-1">
-        <TerminalView tabId={tab.id} active={active} interactive={tab.status === 'connected'} />
+        <TerminalView
+          tabId={tab.id}
+          active={active && focused}
+          interactive={tab.status === 'connected'}
+        />
 
-        {tab.status === 'connected' && !tab.sftpPanelOpen && (
-          <Button
-            size="icon"
-            variant="outline"
-            className="absolute top-2 right-4 z-10 size-8 opacity-60 hover:opacity-100 focus-visible:opacity-100"
-            aria-label={t('sftp.openPanel')}
-            title={t('sftp.openPanelShortcut')}
-            onClick={() => {
-              useSessions.getState().update(tab.id, { sftpPanelOpen: true });
-            }}
-          >
-            <FolderTree aria-hidden="true" />
-          </Button>
+        {broadcasting && (
+          <div className="pointer-events-none absolute top-0 left-0 z-10 rounded-br-md bg-red-600 px-2 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
+            {t('broadcast.paneBadge')}
+          </div>
         )}
+
+        {tab.status === 'connected' && <PaneToolbar tab={tab} split={split} />}
 
         {tab.status === 'form' && fromBook && (
           <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
@@ -67,11 +88,11 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
                 <Button
                   variant="outline"
                   onClick={() => {
-                    closeTab(tab.id);
+                    closePane(tab.id);
                   }}
                 >
                   <X aria-hidden="true" />
-                  {t('session.closeTab')}
+                  {t(split ? 'session.closePane' : 'session.closeTab')}
                 </Button>
                 <Button
                   onClick={() => {
@@ -140,7 +161,7 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
               port={target.port}
               change={tab.hostKeyChange}
               onClose={() => {
-                closeTab(tab.id);
+                closePane(tab.id);
               }}
               onManage={() => {
                 useUi.getState().setActiveSection('keys');
@@ -167,11 +188,11 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  closeTab(tab.id);
+                  closePane(tab.id);
                 }}
               >
                 <X aria-hidden="true" />
-                {t('session.closeTab')}
+                {t(split ? 'session.closePane' : 'session.closeTab')}
               </Button>
             </div>
           </div>

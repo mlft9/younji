@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
 
-import { closeTab, existingTerminalSession } from '@/features/terminal/TerminalSession';
+import { focusNeighbor, splitAndConnect } from '@/features/terminal/split';
+import { closePane, closeTab, existingTerminalSession } from '@/features/terminal/TerminalSession';
 import { lockNow } from '@/features/vault/lock';
-import { useSessions } from '@/stores/sessions';
+import { broadcastActive, useBroadcast } from '@/stores/broadcast';
+import { activePaneId, useSessions } from '@/stores/sessions';
+import { useSnippetRun } from '@/stores/snippetRun';
 
 import { matchShortcut } from './shortcuts';
 
@@ -31,8 +34,12 @@ export function useShortcuts() {
       const action = matchShortcut(event);
       if (!action) return;
       const sessions = useSessions.getState();
-      const tab = sessions.tabs.find((t) => t.id === sessions.activeTabId);
+      // Onglet affiché, et son panneau actif s'il est découpé (SSH-07).
+      const root = sessions.tabs.find((t) => t.id === sessions.activeTabId);
+      const paneId = activePaneId(sessions);
+      const tab = sessions.tabs.find((t) => t.id === paneId) ?? root;
       const terminal = tab ? existingTerminalSession(tab.id) : undefined;
+      const isTerminal = tab?.kind === 'terminal';
 
       const handled = () => {
         event.preventDefault();
@@ -46,8 +53,45 @@ export function useShortcuts() {
           break;
         case 'closeTab':
           handled();
-          if (tab) closeTab(tab.id);
+          if (root) closeTab(root.id);
           break;
+        case 'closePane':
+          if (tab && isTerminal) {
+            handled();
+            closePane(tab.id);
+          }
+          break;
+        case 'splitRight':
+        case 'splitDown':
+          if (tab && isTerminal) {
+            handled();
+            splitAndConnect(tab.id, action === 'splitRight' ? 'row' : 'column');
+          }
+          break;
+        case 'focusLeft':
+        case 'focusRight':
+        case 'focusUp':
+        case 'focusDown':
+          if (tab && isTerminal) {
+            handled();
+            const direction = (
+              { focusLeft: 'left', focusRight: 'right', focusUp: 'up', focusDown: 'down' } as const
+            )[action];
+            focusNeighbor(tab.id, direction);
+          }
+          break;
+        case 'snippets':
+          handled();
+          useSnippetRun.getState().openPicker(tab && isTerminal ? [tab.id] : []);
+          break;
+        case 'broadcast': {
+          // Arrêt en une frappe ; l'activation passe toujours par le dialogue de confirmation.
+          handled();
+          const broadcast = useBroadcast.getState();
+          if (broadcastActive(broadcast)) broadcast.stop();
+          else broadcast.openDialog();
+          break;
+        }
         case 'nextTab':
           handled();
           sessions.activateRelative(1);
@@ -59,7 +103,7 @@ export function useShortcuts() {
         case 'moveTabLeft':
         case 'moveTabRight':
           handled();
-          if (tab) sessions.moveTab(tab.id, action === 'moveTabLeft' ? -1 : 1);
+          if (root) sessions.moveTab(root.id, action === 'moveTabLeft' ? -1 : 1);
           break;
         case 'search':
           if (tab && terminal && (tab.status === 'connected' || tab.status === 'disconnected')) {
