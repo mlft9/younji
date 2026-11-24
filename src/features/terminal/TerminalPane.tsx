@@ -93,7 +93,7 @@ export function TerminalPane({ tab, active, focused, split }: TerminalPaneProps)
             interactive={tab.status === 'connected'}
           />
 
-          {tab.status === 'connected' && <PaneToolbar tab={tab} split={split} />}
+          <PaneToolbar tab={tab} split={split} />
 
           {tab.status === 'form' && fromBook && (
             <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
