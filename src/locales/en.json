@@ -330,7 +330,8 @@
     "tunnels": {
       "no_host": "Choose the SSH host that carries the tunnel.",
       "exposure_refused": "Start cancelled: exposing the tunnel to the network was not confirmed.",
-      "confirmation_pending": "A tunnel exposure confirmation is already open: answer it first."
+      "confirmation_pending": "A tunnel exposure confirmation is already open: answer it first.",
+      "changed": "The tunnel was modified during the confirmation: start cancelled. Start it again."
     }
   },
   "vault": {

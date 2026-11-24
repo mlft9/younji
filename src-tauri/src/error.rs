@@ -34,6 +34,8 @@ impl AppError {
     pub const TUNNEL_EXPOSURE_REFUSED: Self = Self::new("tunnels.exposure_refused");
     /// Une confirmation d'exposition de tunnel est déjà ouverte.
     pub const TUNNEL_CONFIRMATION_PENDING: Self = Self::new("tunnels.confirmation_pending");
+    /// Tunnel modifié pendant la confirmation de son exposition : démarrage annulé.
+    pub const TUNNEL_CHANGED: Self = Self::new("tunnels.changed");
     /// Erreur interne inattendue.
     pub const INTERNAL: Self = Self::new("internal");
     /// Coffre verrouillé (même code que `VaultError::Locked`).
@@ -83,6 +85,7 @@ impl AppError {
         Self::EDITOR_FAILED,
         Self::TUNNEL_EXPOSURE_REFUSED,
         Self::TUNNEL_CONFIRMATION_PENDING,
+        Self::TUNNEL_CHANGED,
     ];
 
     /// Crée une erreur à partir d'un code. Le code doit exister dans `src/locales/*.json`.

@@ -164,17 +164,45 @@ impl Drop for ExposureTurn<'_> {
     }
 }
 
-/// Lecture unique du coffre au démarrage : description à confirmer (tunnel exposé) et
-/// paramètres de démarrage, issus du même état.
-fn prepare(
+/// État d'un tunnel exposé au moment de sa confirmation, **sans secret** (définition et hôte du
+/// carnet) : il est gardé pendant la boîte de dialogue à la place des identifiants.
+#[derive(PartialEq, Eq)]
+struct Confirmed {
+    tunnel: Tunnel,
+    host: core_vault::Host,
+}
+
+/// Description à confirmer et état confirmé d'un tunnel exposé, ou `None`.
+fn confirmation(
     data: &VaultData,
     tunnel_id: EntryId,
+) -> Result<Option<(Exposure, Confirmed)>, AppError> {
+    let Some(exposure) = exposure(data, tunnel_id)? else {
+        return Ok(None);
+    };
+    let tunnel = data.tunnel(tunnel_id)?.clone();
+    let host = data.host(tunnel.host_id)?.clone();
+    Ok(Some((exposure, Confirmed { tunnel, host })))
+}
+
+/// Paramètres de démarrage, lus après la confirmation. La définition et l'hôte doivent être
+/// exactement ceux confirmés : une modification pendant la boîte de dialogue (par une WebView
+/// compromise) annule le démarrage.
+fn params_after(
+    data: &VaultData,
+    tunnel_id: EntryId,
+    confirmed: Option<&Confirmed>,
     known_hosts: Arc<core_ssh::KnownHosts>,
-) -> Result<(Option<Exposure>, TunnelParams), AppError> {
-    Ok((
-        exposure(data, tunnel_id)?,
-        tunnel_params(data, tunnel_id, known_hosts)?,
-    ))
+) -> Result<TunnelParams, AppError> {
+    if let Some(confirmed) = confirmed {
+        let tunnel = data.tunnel(tunnel_id)?;
+        let unchanged =
+            *tunnel == confirmed.tunnel && *data.host(tunnel.host_id)? == confirmed.host;
+        if !unchanged {
+            return Err(AppError::TUNNEL_CHANGED);
+        }
+    }
+    tunnel_params(data, tunnel_id, known_hosts)
 }
 
 /// Texte affichable dans la boîte native : sans caractère de contrôle ni caractère invisible
@@ -307,15 +335,20 @@ pub async fn tunnel_start(
     settings: State<'_, SettingsStore>,
     gate: State<'_, ExposureGate>,
 ) -> Result<SessionId, AppError> {
-    // Une seule lecture du coffre : ce qui démarre est exactement ce qui a été confirmé, même si
-    // la définition est modifiée (par une WebView compromise) pendant la confirmation.
+    // Aucun secret n'est gardé pendant la confirmation (elle peut durer, et le coffre se
+    // verrouiller entre-temps) ; ce qui démarre doit être exactement ce qui a été confirmé.
+    let confirmed = match vault.read(|vault| confirmation(vault.data(), tunnel_id))? {
+        Some((exposure, confirmed)) => {
+            let _turn = gate.try_enter()?;
+            let language = settings.load().settings.language;
+            confirm_exposure(&window, &exposure, &language).await?;
+            Some(confirmed)
+        }
+        None => None,
+    };
     let known_hosts = state.known_hosts();
-    let (exposure, params) = vault.read(|vault| prepare(vault.data(), tunnel_id, known_hosts))?;
-    if let Some(exposure) = exposure {
-        let _turn = gate.try_enter()?;
-        let language = settings.load().settings.language;
-        confirm_exposure(&window, &exposure, &language).await?;
-    }
+    let params = vault
+        .read(|vault| params_after(vault.data(), tunnel_id, confirmed.as_ref(), known_hosts))?;
     vault.touch();
     let host_pattern =
         core_ssh::known_hosts::host_pattern(params.target.host(), params.target.port());
@@ -507,15 +540,23 @@ mod tests {
             .unwrap();
         };
         expose(&mut data, TunnelKind::Local, 8080);
-        let (shown, params) = prepare(&data, id, known).unwrap();
-        // Échange de la définition pendant la confirmation : sans effet sur ce qui démarre.
-        expose(&mut data, TunnelKind::Dynamic, 1080);
-        assert!(shown.unwrap().flag.starts_with("-L 0.0.0.0:8080:"));
+        let (shown, confirmed) = confirmation(&data, id).unwrap().unwrap();
+        assert!(shown.flag.starts_with("-L 0.0.0.0:8080:"));
+        // Définition inchangée : démarrage de ce qui a été confirmé.
+        let params = params_after(&data, id, Some(&confirmed), known.clone()).unwrap();
         assert_eq!(params.spec.port(), 8080);
-        assert!(matches!(
-            params.spec.mode(),
-            core_ssh::tunnel::TunnelMode::Local { .. }
-        ));
+        // Échange de la définition pendant la confirmation : démarrage refusé.
+        expose(&mut data, TunnelKind::Dynamic, 1080);
+        assert_eq!(
+            params_after(&data, id, Some(&confirmed), known.clone())
+                .err()
+                .map(|e| e.code()),
+            Some("tunnels.changed")
+        );
+        // Tunnel non exposé : rien à confirmer.
+        let (data, id) = data_with_tunnel(true, TunnelKind::Local);
+        assert!(confirmation(&data, id).unwrap().is_none());
+        assert!(params_after(&data, id, None, known).is_ok());
     }
 
     #[test]

@@ -330,7 +330,8 @@
     "tunnels": {
       "no_host": "Choisissez l'hôte SSH qui porte le tunnel.",
       "exposure_refused": "Démarrage annulé : l'exposition du tunnel au réseau n'a pas été confirmée.",
-      "confirmation_pending": "Une confirmation d'exposition de tunnel est déjà ouverte : répondez-y d'abord."
+      "confirmation_pending": "Une confirmation d'exposition de tunnel est déjà ouverte : répondez-y d'abord.",
+      "changed": "Le tunnel a été modifié pendant la confirmation : démarrage annulé. Relancez-le."
     }
   },
   "vault": {
