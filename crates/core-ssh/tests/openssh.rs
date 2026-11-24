@@ -211,6 +211,35 @@ async fn password_session_runs_a_full_terminal() {
     client.exercise_shell().await;
 }
 
+/// Lettres accentuées tapées au clavier : bash (readline) les reçoit octet par octet. Sans
+/// locale UTF-8 côté serveur, readline les convertit en séquences « Méta » et n'affiche rien
+/// (un collage encadré, lui, passait). Le serveur de test n'a pas de `LANG`, comme une Debian
+/// minimale.
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn typed_accented_letters_reach_the_shell() {
+    let (Some(user), Some(password)) = (
+        required("YOUNJI_TEST_SSH_USER"),
+        required("YOUNJI_TEST_SSH_PASSWORD"),
+    ) else {
+        return;
+    };
+    let Some(mut client) = Client::connect(&user, password_credentials(password)) else {
+        return;
+    };
+    client.accept_and_open().await;
+    // Comme au clavier : chaque caractère dans une écriture séparée, sans collage encadré.
+    for chunk in ["echo ", "<", "é", "è", "à", "ç", ">", "\r"] {
+        client
+            .handle
+            .write(chunk.as_bytes().to_vec())
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    client.wait_output("<éèàç>\r\n").await;
+}
+
 #[tokio::test]
 #[ignore = "nécessite un serveur SSH de test"]
 async fn wrong_password_is_refused() {

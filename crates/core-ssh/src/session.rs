@@ -826,6 +826,9 @@ async fn key_auth(
     Ok(AuthStep::from(result))
 }
 
+/// Locale proposée au shell distant (variable `LANG`).
+const SHELL_LANG: &str = "C.UTF-8";
+
 async fn open_shell(
     handle: &Handle<ClientHandler>,
     size: TermSize,
@@ -835,6 +838,15 @@ async fn open_shell(
         SshError::ChannelFailed
     };
     let channel = handle.channel_open_session().await.map_err(failed)?;
+    // Locale UTF-8 proposée au serveur, comme le `SendEnv LANG` d'OpenSSH : sans elle, un
+    // serveur sans `LANG` (Debian minimale) démarre bash en locale « C », et readline convertit
+    // les lettres accentuées tapées au clavier en séquences « Méta » (rien ne s'affiche).
+    // `C.UTF-8` ne révèle rien du poste (pas de langue) ; le serveur peut la refuser
+    // (`AcceptEnv`), et une locale qu'il définit lui-même (PAM, /etc/default/locale) l'emporte.
+    channel
+        .set_env(false, "LANG", SHELL_LANG)
+        .await
+        .map_err(failed)?;
     channel
         .request_pty(false, TERM, size.cols(), size.rows(), 0, 0, &[])
         .await
