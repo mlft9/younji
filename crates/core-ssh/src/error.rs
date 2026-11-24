@@ -167,6 +167,16 @@ pub enum SshError {
     #[error("fichier distant modifié entre-temps")]
     EditConflict,
 
+    /// Le port d'écoute d'un tunnel est déjà utilisé sur le poste.
+    #[error("port d'écoute déjà utilisé")]
+    TunnelPortInUse,
+    /// Écoute impossible sur le poste (port réservé, adresse indisponible…).
+    #[error("écoute du tunnel impossible")]
+    TunnelBindFailed,
+    /// Le serveur refuse d'écouter pour une redirection distante (`-R`).
+    #[error("redirection distante refusée par le serveur")]
+    TunnelForwardRefused,
+
     /// Connexion perdue (coupure réseau, keepalive sans réponse, serveur arrêté).
     #[error("connexion perdue")]
     ConnectionLost,
@@ -232,6 +242,9 @@ impl SshError {
             Self::TransferNotFound => "ssh.transfer_not_found",
             Self::EditTooLarge => "ssh.edit_too_large",
             Self::EditConflict => "ssh.edit_conflict",
+            Self::TunnelPortInUse => "ssh.tunnel_port_in_use",
+            Self::TunnelBindFailed => "ssh.tunnel_bind_failed",
+            Self::TunnelForwardRefused => "ssh.tunnel_forward_refused",
             Self::ConnectionLost => "ssh.connection_lost",
             Self::SessionEnded => "ssh.session_ended",
             Self::SessionClosed => "ssh.session_closed",
@@ -290,6 +303,9 @@ impl SshError {
         Self::TransferNotFound,
         Self::EditTooLarge,
         Self::EditConflict,
+        Self::TunnelPortInUse,
+        Self::TunnelBindFailed,
+        Self::TunnelForwardRefused,
         Self::ConnectionLost,
         Self::SessionEnded,
         Self::SessionClosed,

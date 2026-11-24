@@ -116,6 +116,10 @@ pub enum SessionEventDto {
     KeyDeployed { added: bool },
     /// Session prête.
     Connected,
+    /// Tunnel en place : écoute ouverte sur `port`.
+    TunnelReady { port: u16 },
+    /// Compteurs d'un tunnel.
+    TunnelStats { active: u32, total: u64 },
     /// Session terminée (dernier événement).
     Disconnected { code: &'static str },
 }
@@ -152,6 +156,8 @@ impl SessionEventDto {
             },
             SessionEvent::KeyDeployed { added } => Self::KeyDeployed { added },
             SessionEvent::Connected => Self::Connected,
+            SessionEvent::TunnelReady { port } => Self::TunnelReady { port },
+            SessionEvent::TunnelStats { active, total } => Self::TunnelStats { active, total },
             SessionEvent::Disconnected { reason } => Self::Disconnected {
                 code: reason.code(),
             },

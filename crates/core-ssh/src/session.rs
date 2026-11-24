@@ -32,6 +32,7 @@ use crate::deploy::{self, AuthorizedKeyLine, DeployOutcome};
 use crate::known_hosts::{HostKeyStatus, KeyInfo, KnownHosts};
 use crate::prompt::{AuthPrompt, MAX_PROMPT_ROUNDS, PromptAnswers};
 use crate::sftp::SftpClient;
+use crate::tunnel::{self, ForwardSlot, ForwardedVerdict, TunnelContext, TunnelSpec};
 use crate::{SshError, Target, TermSize};
 
 /// Type de terminal annoncé au serveur.
@@ -85,6 +86,18 @@ pub enum SessionEvent {
     },
     /// Shell ouvert, la session est utilisable.
     Connected,
+    /// Tunnel en place : l'écoute est ouverte (sur le poste ou sur le serveur).
+    TunnelReady {
+        /// Port écouté.
+        port: u16,
+    },
+    /// Compteurs d'un tunnel, envoyés à chaque changement (au plus toutes les 250 ms).
+    TunnelStats {
+        /// Connexions relayées en cours.
+        active: u32,
+        /// Connexions relayées depuis le démarrage.
+        total: u64,
+    },
     /// Session terminée. Dernier événement émis.
     Disconnected {
         /// Cause, sous forme de code stable.
@@ -130,10 +143,26 @@ pub struct DeployParams {
     pub timeouts: Timeouts,
 }
 
+/// Paramètres d'un tunnel (TUN-01) : une connexion SSH dédiée, sans shell.
+#[derive(Debug)]
+pub struct TunnelParams {
+    /// Cible validée.
+    pub target: Target,
+    /// Moyen d'authentification. Il est détruit dès la fin de l'authentification.
+    pub credentials: Credentials,
+    /// Redirection à mettre en place.
+    pub spec: TunnelSpec,
+    /// Fichier des clés d'hôte connues.
+    pub known_hosts: Arc<KnownHosts>,
+    /// Délais.
+    pub timeouts: Timeouts,
+}
+
 /// Ce que fait la session une fois authentifiée.
 enum Purpose {
     Shell(TermSize),
     Deploy(AuthorizedKeyLine),
+    Tunnel(TunnelSpec),
 }
 
 enum Control {
@@ -250,6 +279,27 @@ impl SessionHandle {
         Self::start(common, Purpose::Deploy(key), sink)
     }
 
+    /// Démarre un tunnel dans une nouvelle tâche tokio. Le pilotage (clé d'hôte, questions du
+    /// serveur, arrêt par [`SessionHandle::close`]) est le même que pour une session ; l'état
+    /// arrive par [`SessionEvent::TunnelReady`] et [`SessionEvent::TunnelStats`]. Fermer la
+    /// session ferme l'écoute (le port est libéré) et toutes les connexions relayées.
+    pub fn spawn_tunnel(params: TunnelParams, sink: Arc<dyn SessionSink>) -> Self {
+        let TunnelParams {
+            target,
+            credentials,
+            spec,
+            known_hosts,
+            timeouts,
+        } = params;
+        let common = Common {
+            target,
+            credentials,
+            known_hosts,
+            timeouts,
+        };
+        Self::start(common, Purpose::Tunnel(spec), sink)
+    }
+
     fn start(common: Common, purpose: Purpose, sink: Arc<dyn SessionSink>) -> Self {
         let (control, control_rx) = mpsc::channel(CONTROL_CAPACITY);
         let decision = DecisionSlot::default();
@@ -263,6 +313,7 @@ impl SessionHandle {
             flow: flow.clone(),
             cancel: cancel.clone(),
             sink,
+            forward: ForwardSlot::default(),
         };
         tokio::spawn(task.run(common, purpose));
         Self {
@@ -448,6 +499,8 @@ struct SessionTask {
     flow: Arc<Flow>,
     cancel: CancellationToken,
     sink: Arc<dyn SessionSink>,
+    /// Redirection `-R` attendue (tunnels distants uniquement).
+    forward: ForwardSlot,
 }
 
 impl SessionTask {
@@ -484,6 +537,11 @@ impl SessionTask {
                 Ok(Err(reason)) => reason,
                 Err(_) => SshError::Timeout,
             },
+            Purpose::Tunnel(spec) => {
+                let reason = self.run_tunnel(&handle, spec).await;
+                let _ = handle.disconnect(Disconnect::ByApplication, "", "").await;
+                reason
+            }
             Purpose::Deploy(key) => {
                 let result = deploy::run(&handle, &key, limit).await;
                 let _ = handle.disconnect(Disconnect::ByApplication, "", "").await;
@@ -496,6 +554,41 @@ impl SessionTask {
                     }
                     Err(reason) => reason,
                 }
+            }
+        }
+    }
+
+    /// Fait vivre un tunnel. Les commandes d'un terminal (saisie, taille) n'ont pas de sens
+    /// ici et sont ignorées ; SFTP est refusé sur une connexion de tunnel.
+    async fn run_tunnel(
+        &mut self,
+        handle: &Arc<Handle<ClientHandler>>,
+        spec: TunnelSpec,
+    ) -> SshError {
+        let ready_sink = self.sink.clone();
+        let on_ready = move |port| ready_sink.event(SessionEvent::TunnelReady { port });
+        let stats_sink = self.sink.clone();
+        let ctx = TunnelContext {
+            handle,
+            forward: &self.forward,
+            cancel: &self.cancel,
+            on_ready: &on_ready,
+            on_stats: Arc::new(move |active, total| {
+                stats_sink.event(SessionEvent::TunnelStats { active, total });
+            }),
+        };
+        let tunnel = tunnel::run(spec, ctx);
+        tokio::pin!(tunnel);
+        loop {
+            tokio::select! {
+                reason = &mut tunnel => return reason,
+                control = self.control_rx.recv() => match control {
+                    Some(Control::OpenSftp(reply)) => {
+                        let _ = reply.send(Err(SshError::SftpUnavailable));
+                    }
+                    Some(Control::Input(_) | Control::Resize(_)) => {}
+                    None => self.cancel.cancel(),
+                },
             }
         }
     }
@@ -524,6 +617,7 @@ impl SessionTask {
             decision: self.decision.clone(),
             decision_timeout: timeouts.host_key_decision,
             verdict: verdict.clone(),
+            forward: self.forward.clone(),
         };
         let config = client_config(&timeouts);
         let handshake = client::connect_stream(config, stream, handler);
@@ -881,8 +975,9 @@ async fn open_sftp(handle: &Handle<ClientHandler>) -> Result<SftpClient, SshErro
     SftpClient::from_streams(meta, files).await
 }
 
-/// Gestionnaire russh : vérification de la clé d'hôte et bannière.
-struct ClientHandler {
+/// Gestionnaire russh : vérification de la clé d'hôte, bannière et canaux ouverts par le
+/// serveur (`forwarded-tcpip`, refusés sauf pour le tunnel `-R` de la connexion).
+pub(crate) struct ClientHandler {
     flow: Arc<Flow>,
     /// Octets de bannière encore affichables pour cette session.
     banner_budget: usize,
@@ -894,6 +989,8 @@ struct ClientHandler {
     decision_timeout: Duration,
     /// Cause précise d'un refus, russh ne renvoyant qu'une erreur générique.
     verdict: Arc<Mutex<Option<SshError>>>,
+    /// Redirection `-R` attendue, s'il y en a une.
+    forward: ForwardSlot,
 }
 
 impl ClientHandler {
@@ -967,6 +1064,40 @@ impl client::Handler for ClientHandler {
             }
             Err(error) => self.refuse(error),
         }
+    }
+
+    /// Canal ouvert par le serveur pour une redirection distante. Il n'est accepté que s'il
+    /// correspond au port demandé par le tunnel `-R` de cette connexion : sans cela, un serveur
+    /// malveillant pourrait ouvrir des canaux vers le poste (russh les accepte par défaut).
+    /// L'adresse annoncée par le serveur est ignorée : la destination est celle du tunnel.
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        _connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        match tunnel::forwarded_verdict(&self.forward, connected_port) {
+            ForwardedVerdict::Accept(permit) => {
+                reply.accept().await;
+                permit.send(channel);
+            }
+            ForwardedVerdict::Unexpected => {
+                tracing::warn!("canal forwarded-tcpip non demandé : refusé");
+                reply
+                    .reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                    .await;
+            }
+            ForwardedVerdict::Busy => {
+                reply
+                    .reject(russh::ChannelOpenFailure::ResourceShortage)
+                    .await;
+            }
+        }
+        Ok(())
     }
 
     async fn auth_banner(

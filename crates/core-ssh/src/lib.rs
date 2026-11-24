@@ -13,6 +13,7 @@ pub mod prompt;
 mod session;
 pub mod sftp;
 mod target;
+pub mod tunnel;
 
 pub use auth::{Credentials, ImportedKey};
 pub use config::Timeouts;
@@ -23,6 +24,7 @@ pub use known_hosts::{HostKeyStatus, KeyInfo, KnownHostEntry, KnownHosts, KnownH
 pub use prompt::{AuthPrompt, PromptAnswers, PromptField};
 pub use session::{
     ConnectParams, DeployParams, HIGH_WATERMARK, MAX_INPUT_CHUNK, SessionEvent, SessionHandle,
-    SessionSink,
+    SessionSink, TunnelParams,
 };
 pub use target::{MAX_COLS, MAX_ROWS, Target, TermSize};
+pub use tunnel::{ListenScope, TunnelSpec};

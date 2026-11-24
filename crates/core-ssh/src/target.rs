@@ -73,7 +73,7 @@ impl fmt::Display for Target {
     }
 }
 
-fn normalize_host(raw: &str) -> Result<String, SshError> {
+pub(crate) fn normalize_host(raw: &str) -> Result<String, SshError> {
     if raw.chars().any(char::is_control) {
         return Err(SshError::InvalidHost);
     }
