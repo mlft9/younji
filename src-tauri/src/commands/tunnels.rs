@@ -7,12 +7,13 @@
 //! coffre par le cœur.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use core_ssh::{Credentials, ListenScope, SessionHandle, Timeouts, TunnelParams, TunnelSpec};
 use core_vault::{BindScope, EntryId, Tunnel, TunnelInput, TunnelKind, VaultData, VaultError};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::commands::ssh::{ChannelSink, SessionEventDto, close_if_locked, host_target};
@@ -139,6 +140,51 @@ fn tunnel_params(
     })
 }
 
+/// Une seule confirmation d'exposition ouverte à la fois : une WebView compromise ne peut pas
+/// empiler des boîtes de dialogue pour lasser l'utilisateur.
+#[derive(Default)]
+pub struct ExposureGate(AtomicBool);
+
+/// Tour de confirmation en cours ; libère la place à sa destruction.
+struct ExposureTurn<'a>(&'a AtomicBool);
+
+impl ExposureGate {
+    fn try_enter(&self) -> Result<ExposureTurn<'_>, AppError> {
+        if self.0.swap(true, Ordering::AcqRel) {
+            Err(AppError::TUNNEL_CONFIRMATION_PENDING)
+        } else {
+            Ok(ExposureTurn(&self.0))
+        }
+    }
+}
+
+impl Drop for ExposureTurn<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// Lecture unique du coffre au démarrage : description à confirmer (tunnel exposé) et
+/// paramètres de démarrage, issus du même état.
+fn prepare(
+    data: &VaultData,
+    tunnel_id: EntryId,
+    known_hosts: Arc<core_ssh::KnownHosts>,
+) -> Result<(Option<Exposure>, TunnelParams), AppError> {
+    Ok((
+        exposure(data, tunnel_id)?,
+        tunnel_params(data, tunnel_id, known_hosts)?,
+    ))
+}
+
+/// Texte affichable dans la boîte native : sans caractère de contrôle ni caractère invisible
+/// (contrôles bidirectionnels, largeur nulle) qui réordonnerait visuellement le message.
+fn displayable(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() && !core_vault::model::is_invisible_format(*c))
+        .collect()
+}
+
 /// Ce que la confirmation native d'un tunnel exposé affiche, lu dans le coffre.
 struct Exposure {
     name: String,
@@ -165,9 +211,9 @@ fn exposure(data: &VaultData, tunnel_id: EntryId) -> Result<Option<Exposure>, Ap
         TunnelKind::Dynamic => format!("-D 0.0.0.0:{} (SOCKS5)", tunnel.bind_port),
     };
     Ok(Some(Exposure {
-        name: tunnel.name.clone(),
-        flag,
-        host: format!("{} ({})", host.name, host.address),
+        name: displayable(&tunnel.name),
+        flag: displayable(&flag),
+        host: displayable(&format!("{} ({})", host.name, host.address)),
     }))
 }
 
@@ -224,14 +270,14 @@ fn exposure_message(exposure: &Exposure, language: &str) -> (String, String, Str
 /// script de la WebView (dépendance compromise, M4) ne peut ni la remplir ni la contourner,
 /// contrairement au drapeau `exposureConfirmed` de l'IPC, qui ne protège que d'un bogue.
 async fn confirm_exposure(
-    app: &AppHandle,
     window: &WebviewWindow,
     exposure: &Exposure,
     language: &str,
 ) -> Result<(), AppError> {
     let (title, message, ok, cancel) = exposure_message(exposure, language);
     let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.dialog()
+    window
+        .dialog()
         .message(message)
         .title(title)
         .kind(MessageDialogKind::Warning)
@@ -255,18 +301,21 @@ async fn confirm_exposure(
 pub async fn tunnel_start(
     tunnel_id: EntryId,
     on_event: Channel<SessionEventDto>,
-    app: AppHandle,
     window: WebviewWindow,
     state: State<'_, SessionManager>,
     vault: State<'_, VaultState>,
     settings: State<'_, SettingsStore>,
+    gate: State<'_, ExposureGate>,
 ) -> Result<SessionId, AppError> {
-    if let Some(exposure) = vault.read(|vault| exposure(vault.data(), tunnel_id))? {
-        let language = settings.load().settings.language;
-        confirm_exposure(&app, &window, &exposure, &language).await?;
-    }
+    // Une seule lecture du coffre : ce qui démarre est exactement ce qui a été confirmé, même si
+    // la définition est modifiée (par une WebView compromise) pendant la confirmation.
     let known_hosts = state.known_hosts();
-    let params = vault.read(|vault| tunnel_params(vault.data(), tunnel_id, known_hosts))?;
+    let (exposure, params) = vault.read(|vault| prepare(vault.data(), tunnel_id, known_hosts))?;
+    if let Some(exposure) = exposure {
+        let _turn = gate.try_enter()?;
+        let language = settings.load().settings.language;
+        confirm_exposure(&window, &exposure, &language).await?;
+    }
     vault.touch();
     let host_pattern =
         core_ssh::known_hosts::host_pattern(params.target.host(), params.target.port());
@@ -434,6 +483,56 @@ mod tests {
         assert_eq!(ok, "Démarrer");
         let (title, ..) = exposure_message(&exposure, "system");
         assert!(title.contains("Expose"));
+    }
+
+    #[test]
+    fn start_uses_the_definition_that_was_confirmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let known = Arc::new(core_ssh::KnownHosts::new(dir.path().join("k")));
+        let (mut data, id) = data_with_tunnel(true, TunnelKind::Local);
+        let original = data.tunnel(id).unwrap().clone();
+        let expose = |data: &mut VaultData, kind, port| {
+            data.upsert_tunnel(TunnelInput {
+                id: Some(id),
+                name: original.name.clone(),
+                host_id: original.host_id,
+                kind,
+                bind_scope: BindScope::AllInterfaces,
+                bind_port: port,
+                dest_host: original.dest_host.clone(),
+                dest_port: original.dest_port,
+                auto_start: false,
+                exposure_confirmed: true,
+            })
+            .unwrap();
+        };
+        expose(&mut data, TunnelKind::Local, 8080);
+        let (shown, params) = prepare(&data, id, known).unwrap();
+        // Échange de la définition pendant la confirmation : sans effet sur ce qui démarre.
+        expose(&mut data, TunnelKind::Dynamic, 1080);
+        assert!(shown.unwrap().flag.starts_with("-L 0.0.0.0:8080:"));
+        assert_eq!(params.spec.port(), 8080);
+        assert!(matches!(
+            params.spec.mode(),
+            core_ssh::tunnel::TunnelMode::Local { .. }
+        ));
+    }
+
+    #[test]
+    fn displayed_text_drops_invisible_characters() {
+        assert_eq!(displayable("ab\u{202E}cd\u{200B}e\n"), "abcde");
+    }
+
+    #[test]
+    fn only_one_exposure_confirmation_at_a_time() {
+        let gate = ExposureGate::default();
+        let turn = gate.try_enter().unwrap();
+        assert_eq!(
+            gate.try_enter().err().map(|e| e.code()),
+            Some("tunnels.confirmation_pending")
+        );
+        drop(turn);
+        assert!(gate.try_enter().is_ok());
     }
 
     #[test]

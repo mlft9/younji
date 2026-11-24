@@ -32,6 +32,8 @@ impl AppError {
     pub const URL_OPEN_FAILED: Self = Self::new("url.open_failed");
     /// Démarrage d'un tunnel exposé refusé dans la confirmation native.
     pub const TUNNEL_EXPOSURE_REFUSED: Self = Self::new("tunnels.exposure_refused");
+    /// Une confirmation d'exposition de tunnel est déjà ouverte.
+    pub const TUNNEL_CONFIRMATION_PENDING: Self = Self::new("tunnels.confirmation_pending");
     /// Erreur interne inattendue.
     pub const INTERNAL: Self = Self::new("internal");
     /// Coffre verrouillé (même code que `VaultError::Locked`).
@@ -80,6 +82,7 @@ impl AppError {
         Self::TOO_MANY_EDITS,
         Self::EDITOR_FAILED,
         Self::TUNNEL_EXPOSURE_REFUSED,
+        Self::TUNNEL_CONFIRMATION_PENDING,
     ];
 
     /// Crée une erreur à partir d'un code. Le code doit exister dans `src/locales/*.json`.

@@ -470,6 +470,17 @@ fn check_tunnel_host(host: &str) -> bool {
         })
 }
 
+/// Nom de tunnel : comme [`clean_name`], sans caractère invisible (contrôles bidirectionnels,
+/// largeur nulle). Il est affiché dans la confirmation native d'exposition, où un nom piégé
+/// pourrait réordonner visuellement le message.
+fn clean_tunnel_name(name: &str) -> Result<String, VaultError> {
+    let name = clean_name(name)?;
+    if name.chars().any(is_invisible_format) {
+        return Err(VaultError::InvalidName);
+    }
+    Ok(name)
+}
+
 /// Champs d'un tunnel cohérents avec son type : destination présente pour `-L`/`-R`, absente
 /// pour `-D` ; ports non nuls.
 fn check_tunnel_fields(
@@ -598,7 +609,7 @@ impl VaultData {
         }
         // Les tunnels ouvrent des ports : leurs champs sont revérifiés à chaque chargement.
         for tunnel in &self.tunnels {
-            let valid = clean_name(&tunnel.name).is_ok_and(|n| n == tunnel.name)
+            let valid = clean_tunnel_name(&tunnel.name).is_ok_and(|n| n == tunnel.name)
                 && check_tunnel_fields(
                     tunnel.kind,
                     tunnel.bind_port,
@@ -908,7 +919,7 @@ impl VaultData {
     /// Crée ou modifie un tunnel. Renvoie son identifiant. L'écoute sur toutes les interfaces
     /// n'est acceptée qu'avec `exposure_confirmed` (TUN-03).
     pub fn upsert_tunnel(&mut self, input: TunnelInput) -> Result<EntryId, VaultError> {
-        let name = clean_name(&input.name)?;
+        let name = clean_tunnel_name(&input.name)?;
         self.host(input.host_id)?;
         let (dest_host, dest_port) = match input.kind {
             TunnelKind::Dynamic => (String::new(), 0),
@@ -1441,7 +1452,7 @@ mod tests {
     fn tunnel_fields_are_validated() {
         let mut data = VaultData::default();
         let host = data.upsert_host(host_input("srv")).unwrap();
-        let cases: [fn(&mut TunnelInput); 7] = [
+        let cases: [fn(&mut TunnelInput); 8] = [
             |t| t.bind_port = 0,
             |t| t.dest_port = 0,
             |t| t.dest_host = String::new(),
@@ -1449,6 +1460,7 @@ mod tests {
             |t| t.dest_host = "x\u{1b}[31m".into(),
             |t| t.dest_host = "h".repeat(MAX_TUNNEL_HOST_LEN + 1),
             |t| t.name = " ".into(),
+            |t| t.name = "web\u{202E}lmth".into(),
         ];
         for (i, change) in cases.iter().enumerate() {
             let mut input = tunnel_input(host, TunnelKind::Remote);

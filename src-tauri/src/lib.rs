@@ -77,6 +77,7 @@ pub fn run() {
             app.manage(SessionManager::new(known_hosts));
             app.manage(vault);
             app.manage(SettingsStore::new(data_dir.join(SETTINGS_FILE)));
+            app.manage(commands::tunnels::ExposureGate::default());
             // Copies d'édition SFTP abandonnées (exécution interrompue il y a plus de 24 h) :
             // supprimées. Les plus récentes peuvent appartenir à une autre instance.
             if let Ok(dir) = commands::sftp::edit_dir(app.handle()) {
