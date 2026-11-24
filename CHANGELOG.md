@@ -67,7 +67,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Un coffre enregistré par cette version ne peut plus être ouvert par une version plus ancienne de Younji, qui le refuse sans rien perdre (ADR-037).
 
 ### Corrigé
-- Les lettres accentuées tapées au clavier n'apparaissaient pas sur un serveur sans locale (bash en locale « C ») : Younji propose désormais `LANG=C.UTF-8` à l'ouverture du shell, comme OpenSSH envoie `LANG`.
+- Les lettres accentuées tapées au clavier n'apparaissaient pas sur un serveur sans locale (bash en locale « C ») : Younji propose désormais `LANG=C.UTF-8` et `LC_CTYPE=C.UTF-8` à l'ouverture du shell, comme OpenSSH envoie `LANG LC_*` ; `LC_CTYPE` reste efficace quand le serveur réécrit `LANG=C` (conteneurs Proxmox).
 - Un panneau non connecté peut être fermé (bouton ✕ toujours visible sur un onglet découpé).
 - Le menu contextuel natif de la WebView (dont « Recharger », qui fermait toutes les sessions) est bloqué hors des champs de saisie.
 
