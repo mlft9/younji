@@ -141,7 +141,7 @@ Connecté en terminal sur `testpwd` :
 - [ ] Compte `testsftp` (SFTP seul, chroot) : la connexion terminal échoue ou se ferme proprement, pas de plantage. *(Limite attendue : le SFTP s'appuie sur une session de terminal ouverte, voir ADR-034.)*
 - [ ] Fermer l'onglet terminal : les onglets SFTP liés se ferment. Verrouiller pendant un transfert : le transfert s'arrête.
 
-### Étape 5 — Split, snippets, diffusion multi-sessions (pas encore validée, c'est la priorité)
+### Étape 5 — Split, snippets, diffusion multi-sessions (validée le 24/11/2026)
 
 > **Préparation sur `younji-deb`** (snapshot `base-propre`) : `sudo systemctl is-active ssh cron` (les deux actifs), puis `sudo rm -f /tmp/diff-*`.
 > **Préparation dans Younji** : trois hôtes du carnet vers `younji-deb` : `testpwd` (mot de passe enregistré), `testkey` (clé du lab), ton compte. Un nouveau panneau ouvert depuis un hôte du carnet se connecte sans rien redemander ; depuis une connexion rapide, le mot de passe est redemandé (normal, ADR-035).
