@@ -630,3 +630,50 @@ describe('fermeture des panneaux (SSH-07)', () => {
     expect(useSessions.getState().layouts).toEqual({});
   });
 });
+
+describe('saisie des lettres accentuées (WebKitGTK)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    closeAllTabs();
+  });
+
+  /** Touche enfoncée puis événement `input` qui remonte jusqu'au conteneur du terminal. */
+  function keyThenInput(session: TerminalSession, data: string, init: InputEventInit = {}) {
+    const keyHandler = fake(session).attachCustomKeyEventHandler.mock.calls[0]?.[0] as (e: {
+      type: string;
+    }) => boolean;
+    keyHandler({ type: 'keydown' });
+    const { host } = session as unknown as { host: HTMLElement };
+    host.dispatchEvent(
+      new InputEvent('input', { data, inputType: 'insertText', bubbles: true, ...init }),
+    );
+  }
+
+  it('envoie « é » quand xterm ne l’a pas traité', async () => {
+    const a = await registered(1);
+    keyThenInput(a.session, 'é');
+    keyThenInput(a.session, 'è');
+    await vi.waitFor(() => {
+      expect(writesTo(1).join('')).toBe('éè');
+    });
+  });
+
+  it('n’envoie rien de plus si xterm a déjà envoyé la touche', async () => {
+    const a = await registered(1);
+    a.type('a'); // xterm a émis la donnée pendant la touche…
+    (a.session as unknown as { host: HTMLElement }).host.dispatchEvent(
+      new InputEvent('input', { data: 'a', inputType: 'insertText', bubbles: true }),
+    );
+    await vi.waitFor(() => {
+      expect(writesTo(1)).toEqual(['a']);
+    });
+  });
+
+  it('laisse à xterm les saisies composées et les autres types d’entrée', async () => {
+    const a = await registered(1);
+    keyThenInput(a.session, 'ê', { isComposing: true });
+    keyThenInput(a.session, 'x', { inputType: 'insertFromPaste' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(writesTo(1)).toEqual([]);
+  });
+});
