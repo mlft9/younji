@@ -72,7 +72,8 @@ export function useShortcuts() {
         case 'focusRight':
         case 'focusUp':
         case 'focusDown':
-          if (tab && isTerminal) {
+          // Seulement depuis un terminal : dans un champ, Ctrl+Maj+flèches sélectionne des mots.
+          if (tab && isTerminal && focusInTerminal()) {
             handled();
             const direction = (
               { focusLeft: 'left', focusRight: 'right', focusUp: 'up', focusDown: 'down' } as const

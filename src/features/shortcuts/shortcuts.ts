@@ -39,8 +39,6 @@ interface ShortcutDefinition {
   /** Touche, comparée sans tenir compte de la casse. */
   key: string;
   shift: boolean;
-  /** Ctrl+Alt (navigation entre panneaux). Absent : Alt interdit. */
-  alt?: boolean;
 }
 
 /** Définitions, dans l'ordre d'affichage. Une action peut avoir plusieurs combinaisons. */
@@ -60,53 +58,44 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   { action: 'splitRight', key: 'D', shift: true },
   { action: 'splitDown', key: 'O', shift: true },
   { action: 'closePane', key: 'X', shift: true },
-  { action: 'focusLeft', key: 'ArrowLeft', shift: false, alt: true },
-  { action: 'focusRight', key: 'ArrowRight', shift: false, alt: true },
-  { action: 'focusUp', key: 'ArrowUp', shift: false, alt: true },
-  { action: 'focusDown', key: 'ArrowDown', shift: false, alt: true },
+  { action: 'focusLeft', key: 'ArrowLeft', shift: true },
+  { action: 'focusRight', key: 'ArrowRight', shift: true },
+  { action: 'focusUp', key: 'ArrowUp', shift: true },
+  { action: 'focusDown', key: 'ArrowDown', shift: true },
   { action: 'snippets', key: 'S', shift: true },
   { action: 'broadcast', key: 'I', shift: true },
   { action: 'lock', key: 'L', shift: true },
 ];
 
 /**
- * Action correspondant à une frappe, ou `null`. Toutes exigent Ctrl, sans Méta ; Alt seulement
- * pour la navigation entre panneaux.
+ * Action correspondant à une frappe, ou `null`. Toutes exigent Ctrl, sans Alt ni Méta : Ctrl+Alt
+ * est pris par les bureaux Linux (changement d'espace de travail) et correspond à AltGr sous
+ * Windows.
  */
 export function matchShortcut(event: KeyboardEventLike): ShortcutAction | null {
-  if (!event.ctrlKey || event.metaKey) return null;
+  if (!event.ctrlKey || event.altKey || event.metaKey) return null;
   const key = event.key.toLowerCase();
   const found = SHORTCUTS.find(
-    (shortcut) =>
-      shortcut.key.toLowerCase() === key &&
-      shortcut.shift === event.shiftKey &&
-      (shortcut.alt ?? false) === event.altKey,
+    (shortcut) => shortcut.key.toLowerCase() === key && shortcut.shift === event.shiftKey,
   );
   return found?.action ?? null;
 }
 
 /** Touches à afficher pour une définition (les libellés des modificateurs sont traduits). */
 export function shortcutKeys(definition: ShortcutDefinition): string[] {
-  return [
-    'ctrl',
-    ...(definition.alt ? ['alt'] : []),
-    ...(definition.shift ? ['shift'] : []),
-    definition.key,
-  ];
+  return ['ctrl', ...(definition.shift ? ['shift'] : []), definition.key];
 }
 
 /** Libellé de la première combinaison d'une action, avec des modificateurs traduits. */
 export function formatShortcut(
   action: ShortcutAction,
-  translate: (key: 'shortcuts.keys.ctrl' | 'shortcuts.keys.shift' | 'shortcuts.keys.alt') => string,
+  translate: (key: 'shortcuts.keys.ctrl' | 'shortcuts.keys.shift') => string,
 ): string {
   const definition = SHORTCUTS.find((s) => s.action === action);
   if (!definition) return '';
   return shortcutKeys(definition)
     .map((part) =>
-      part === 'ctrl' || part === 'shift' || part === 'alt'
-        ? translate(`shortcuts.keys.${part}`)
-        : part,
+      part === 'ctrl' || part === 'shift' ? translate(`shortcuts.keys.${part}`) : part,
     )
     .join('+');
 }

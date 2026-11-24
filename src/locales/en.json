@@ -163,8 +163,7 @@
   "shortcuts": {
     "keys": {
       "ctrl": "Ctrl",
-      "shift": "Shift",
-      "alt": "Alt"
+      "shift": "Shift"
     },
     "title": "Keyboard shortcuts",
     "description": "They use Ctrl+Shift so that the shell keeps its own shortcuts (Ctrl+C, Ctrl+R, Ctrl+W…).",

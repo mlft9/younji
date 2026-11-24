@@ -163,8 +163,7 @@
   "shortcuts": {
     "keys": {
       "ctrl": "Ctrl",
-      "shift": "Maj",
-      "alt": "Alt"
+      "shift": "Maj"
     },
     "title": "Raccourcis clavier",
     "description": "Ils utilisent Ctrl+Maj pour laisser au shell ses propres raccourcis (Ctrl+C, Ctrl+R, Ctrl+W…).",

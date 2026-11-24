@@ -60,15 +60,16 @@ describe('raccourcis clavier', () => {
     expect(matchShortcut(key('X', { shiftKey: true }))).toBe('closePane');
     expect(matchShortcut(key('S', { shiftKey: true }))).toBe('snippets');
     expect(matchShortcut(key('I', { shiftKey: true }))).toBe('broadcast');
-    expect(matchShortcut(key('ArrowLeft', { altKey: true }))).toBe('focusLeft');
-    expect(matchShortcut(key('ArrowDown', { altKey: true }))).toBe('focusDown');
-    // Sans Alt, les flèches restent au shell (Ctrl+flèche : mot précédent).
+    expect(matchShortcut(key('ArrowLeft', { shiftKey: true }))).toBe('focusLeft');
+    expect(matchShortcut(key('ArrowDown', { shiftKey: true }))).toBe('focusDown');
+    // Sans Maj, les flèches restent au shell (Ctrl+flèche : mot précédent).
     expect(matchShortcut(key('ArrowLeft'))).toBeNull();
-    // Alt+Maj n'est pas une combinaison de navigation.
+    // Ctrl+Alt+flèches appartient au bureau (Ubuntu : changement d'espace de travail).
+    expect(matchShortcut(key('ArrowLeft', { altKey: true }))).toBeNull();
     expect(matchShortcut(key('ArrowLeft', { altKey: true, shiftKey: true }))).toBeNull();
-    expect(shortcutKeys({ action: 'focusUp', key: 'ArrowUp', shift: false, alt: true })).toEqual([
+    expect(shortcutKeys({ action: 'focusUp', key: 'ArrowUp', shift: true })).toEqual([
       'ctrl',
-      'alt',
+      'shift',
       'ArrowUp',
     ]);
   });
