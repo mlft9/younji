@@ -145,6 +145,18 @@ describe('configuration de la fenêtre et de la WebView', () => {
     expect(capabilities.flatMap((c) => c.windows)).toEqual([label]);
   });
 
+  it("n'embarque pas l'inspecteur web dans la version publiée", () => {
+    // Tauri n'active l'inspecteur (clic droit → Inspecter) qu'en compilation de développement,
+    // sauf si la fonctionnalité `devtools` est ajoutée : elle donnerait à quiconque devant le
+    // poste un accès direct à l'IPC depuis la console, en contournant l'interface.
+    const cargo = read('src-tauri/Cargo.toml');
+    const tauriDeps = cargo.split('\n').filter((line) => /^\s*tauri\s*=/.test(line));
+    expect(tauriDeps).not.toHaveLength(0);
+    for (const line of tauriDeps) expect(line).not.toContain('devtools');
+    const lib = read('src-tauri/src/lib.rs');
+    expect(lib).not.toMatch(/\.devtools\(|open_devtools/);
+  });
+
   it('garde le nom et l’identifiant définis par ADR-014', () => {
     expect(config.productName).toBe('Younji');
     expect(config.identifier).toBe('io.github.mlft9.younji');

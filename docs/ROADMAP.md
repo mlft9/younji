@@ -11,7 +11,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 1 | Terminal SSH multi-onglets | ✅ |
 | 2 | Coffre chiffré et carnet d'hôtes | ✅ |
 | 3 | 2FA et générateur de clés | ✅ |
-| 4 | SFTP | 🟨 |
+| 4 | SFTP | ✅ |
 | 5 | Split, snippets, diffusion multi-sessions | ⬜ |
 | 6 | Tunnels SSH | ⬜ |
 | 7 | Terminal local | ⬜ |
@@ -124,10 +124,10 @@ Contenu : `russh-sftp` ; panneau latéral qui suit le shell (OSC 7, intégration
 Point de sécurité : noms de fichiers distants malveillants (`../`, caractères de contrôle), liens symboliques, écrasements.
 
 **Critères d'acceptation**
-- [ ] Un `cd` dans le terminal fait suivre le panneau (avec un shell compatible OSC 7 ou l'intégration activée).
-- [ ] Envoi et téléchargement d'un dossier récursif contenant des accents, des espaces et des fichiers vides.
-- [ ] Un fichier de 1 Go se transfère avec progression, peut être annulé, et l'interface reste fluide.
-- [ ] Un fichier distant nommé de façon malveillante ne peut pas écrire en dehors du dossier local choisi.
+- [x] Un `cd` dans le terminal fait suivre le panneau (avec un shell compatible OSC 7 ou l'intégration activée).
+- [x] Envoi et téléchargement d'un dossier récursif contenant des accents, des espaces et des fichiers vides.
+- [x] Un fichier de 1 Go se transfère avec progression, peut être annulé, et l'interface reste fluide.
+- [x] Un fichier distant nommé de façon malveillante ne peut pas écrire en dehors du dossier local choisi.
 
 ---
 
