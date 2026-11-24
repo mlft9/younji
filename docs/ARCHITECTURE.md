@@ -1,6 +1,6 @@
 # Architecture
 
-> Reflète le code à la fin de l'étape 5 (split, snippets, diffusion). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
+> Reflète le code à la fin de l'étape 6 (tunnels SSH). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
 
 ## 1. Vue d'ensemble
 
@@ -34,7 +34,8 @@ flowchart LR
     IPCJS -- "invoke()" --> ISO
     ISO -- "message chiffré (AES-GCM)" --> ACL
     CMD -- "réponse / Channel&lt;T&gt; (flux)" --> IPCJS
-    SSH -- "SSH, SFTP" --> SRV[(Serveurs)]
+    SSH -- "SSH, SFTP, tunnels" --> SRV[(Serveurs)]
+    APPS[("Applications du poste<br/>(navigateur…)")] -- "TCP, SOCKS5<br/>(127.0.0.1 par défaut)" --> SSH
     VAULT -- "vault.younji (chiffré)" --> DISK[(Disque)]
     CMD -- "settings.json (en clair, sans secret)" --> DISK
     SSH -- "fichiers transférés<br/>(dossiers choisis par le cœur)" --> DISK
@@ -51,15 +52,15 @@ Traits pleins : en place. Pointillés : à venir.
 
 ## 2. Découpage du code
 
-État actuel (étape 5) :
+État actuel (étape 6) :
 
 ```
 .
 ├── src/                          Interface React
 │   ├── components/
-│   │   ├── layout/               AppShell (avec bandeau de diffusion), Sidebar (avec bouton « Verrouiller »),
-│   │   │                         TabBar (onglets de terminal et SFTP, nombre de panneaux, pastille de
-│   │   │                         diffusion), SectionPlaceholder (Tunnels)
+│   │   ├── layout/               AppShell (avec bandeau de diffusion et partie des tunnels montée en
+│   │   │                         permanence), Sidebar (avec bouton « Verrouiller »), TabBar (onglets de
+│   │   │                         terminal et SFTP, nombre de panneaux, pastille de diffusion)
 │   │   ├── ui/                   Composants de base (button, avec variante destructive ; input, modal, native-select)
 │   │   ├── ConfirmDialog.tsx     Confirmation générique (bouton rouge pour une action destructrice)
 │   │   ├── SessionChecklist.tsx  Sessions à cocher, avec nom et adresse (diffusion, envoi de snippet)
@@ -87,6 +88,10 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── snippets/             Bibliothèque (SnippetsView, SnippetForm), choix rapide (SnippetPicker),
 │   │   │                         envoi avec variables, aperçu et cibles (SnippetRunDialog), variables
 │   │   │                         et validation (variables.ts, mêmes règles que le cœur), recherche
+│   │   ├── tunnels/              Section Tunnels (TunnelsView : liste, état, compteurs, indicateur
+│   │   │                         « exposé au réseau »), formulaire (TunnelForm, confirmation pour 0.0.0.0),
+│   │   │                         dialogues de clé d'hôte et de 2FA hors de la section et démarrage
+│   │   │                         automatique (TunnelBackground), libellés (describe.ts), démarrage (start.ts)
 │   │   ├── sftp/                 Panneau latéral (SftpSidePanel), onglet double panneau (SftpTabPanel),
 │   │   │                         listes distante et locale (RemoteBrowser, LocalBrowser), file de
 │   │   │                         transferts (TransferList), dialogues de conflit et de chmod,
@@ -106,6 +111,8 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │                         attente, dossier OSC 7, panneau SFTP ouvert
 │   │   ├── broadcast.ts          Cibles de la diffusion (jamais persistées), dialogue d'activation
 │   │   ├── snippetRun.ts         Dialogues d'envoi de snippet ouverts (choix, envoi)
+│   │   ├── tunnels.ts            Tunnels démarrés (état, compteurs, décision en attente, dernière erreur),
+│   │   │                         jamais persistés, vidés au verrouillage
 │   │   ├── sftp.ts               Transferts et éditions affichés, alimentés par les événements du cœur
 │   │   ├── settings.ts           Préférences (langue, thème, police), persistées par le cœur (voir §4)
 │   │   └── ui.ts                 Section active de la barre latérale (non persistée)
@@ -121,7 +128,8 @@ Traits pleins : en place. Pointillés : à venir.
 │   ├── src/
 │   │   ├── main.rs               Point d'entrée
 │   │   ├── lib.rs                Builder Tauri, fenêtre, plugin dialog (Rust seul), minuteur de
-│   │   │                         verrouillage, verrouillage au rechargement, enregistrement des commandes
+│   │   │                         verrouillage, verrouillage au rechargement, ExposureGate, enregistrement
+│   │   │                         des commandes
 │   │   ├── state.rs              SessionManager : sessions ouvertes (64 max), fichiers de clé par identifiant,
 │   │   │                         registre SFTP fermé avec les sessions
 │   │   ├── sftp_state.rs         SftpRegistry : clients SFTP (64 max), dossiers locaux choisis (32 max),
@@ -138,6 +146,8 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── commands/book.rs      Carnet : vault_snapshot, host_*, group_*, identity_*, key_* (dont
 │   │   │                         key_generate et key_export_public), known_host_*
 │   │   ├── commands/snippets.rs  snippet_save, snippet_delete ; SnippetDto (variables calculées par le cœur)
+│   │   ├── commands/tunnels.rs   tunnel_save, tunnel_delete, tunnel_start ; TunnelDto ; confirmation native
+│   │   │                         d'un tunnel exposé (ExposureGate : une à la fois, définition revérifiée)
 │   │   ├── commands/settings.rs  settings_get, settings_set
 │   │   ├── commands/sftp.rs      Commandes sftp_* et local_* : validation, RootPolicy, boîtes de dialogue,
 │   │   │                         Channel d'événements SFTP
@@ -165,7 +175,14 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │   │                     OpenSSH), stockage abstrait (trait KnownHostsStorage, FileStorage)
 │   │   │   ├── session.rs        Tâche de session (SessionHandle) : connexion, TOFU, authentification en
 │   │   │   │                     plusieurs méthodes, PTY, E/S, contrôle de flux, ouverture SFTP
-│   │   │   │                     (open_sftp) ; ou déploiement de clé (spawn_deploy) sur le même chemin
+│   │   │   │                     (open_sftp) ; ou déploiement de clé (spawn_deploy) ou tunnel
+│   │   │   │                     (spawn_tunnel) sur le même chemin ; ClientHandler qui refuse les canaux
+│   │   │   │                     ouverts par le serveur (sauf forwarded-tcpip demandé)
+│   │   │   ├── tunnel/           Tunnels (TUN-01 à TUN-03), sans Tauri :
+│   │   │   │   ├── mod.rs        TunnelSpec validé (-L, -R, -D ; portée ListenScope fermée), écoute,
+│   │   │   │   │                 relais bidirectionnel, -R (tcpip-forward, verdict sur les canaux
+│   │   │   │   │                 forwarded-tcpip), 128 connexions par tunnel, compteurs
+│   │   │   │   └── socks.rs      Négociation SOCKS5 bornée (CONNECT seul, sans authentification)
 │   │   │   ├── sftp/             SFTP (SFTP-01 à 05), sans Tauri :
 │   │   │   │   ├── mod.rs        Trait RemoteFs (accès distant), types d'éléments et d'attributs
 │   │   │   │   ├── client.rs     SftpClient : deux canaux (RawSftpSession pour les métadonnées et les
@@ -179,16 +196,18 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │   │   ├── edit.rs       EditSession : copie privée, surveillance, renvoi, conflit, nettoyage
 │   │   │   │   └── memfs.rs, tests.rs  Faux système de fichiers en mémoire et tests (cfg(test))
 │   │   │   └── error.rs          SshError et ses codes stables ssh.*
-│   │   └── tests/                local_server.rs (serveur russh en mémoire), openssh.rs (#[ignore]),
-│   │                             fixtures/test_host_*.pub (clés publiques uniquement)
+│   │   └── tests/                local_server.rs (serveur russh en mémoire), tunnels.rs (tunnels contre
+│   │                             ce serveur), openssh.rs (#[ignore]), fixtures/test_host_*.pub (clés
+│   │                             publiques uniquement)
 │   └── core-vault/               Coffre chiffré, sans dépendance à Tauri ni à core-ssh
 │       └── src/
 │           ├── format.rs         Format de fichier v1 (en-tête, bornes, lecture sans allocation excessive)
 │           ├── crypto.rs         Argon2id → KEK, enveloppe de la DEK, XChaCha20-Poly1305, aléa du système
 │           ├── store.rs          Vault : création, déverrouillage, sauvegarde atomique + .bak,
 │           │                     changement de mot de passe, permissions
-│           ├── model.rs          Hôtes, groupes, identités, clés, clés d'hôte, réglages, snippets ;
-│           │                     validation (revérifiée au chargement) et intégrité référentielle
+│           ├── model.rs          Hôtes, groupes, identités, clés, clés d'hôte, réglages, snippets,
+│           │                     tunnels ; validation (revérifiée au chargement) et intégrité
+│           │                     référentielle (tunnels supprimés avec leur hôte)
 │           ├── policy.rs         Politique du mot de passe maître (12 caractères, zxcvbn ≥ 3)
 │           └── error.rs          VaultError et ses codes stables vault.*
 ├── tests/
@@ -202,7 +221,7 @@ Traits pleins : en place. Pointillés : à venir.
 └── rust-toolchain.toml           Toolchain stable + rustfmt + clippy
 ```
 
-À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape ; `core-ssh` s'enrichira des tunnels (étape 6). Côté interface, `features/` accueillera `tunnels/`.
+À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape.
 
 ### Dépendances principales ajoutées à l'étape 1
 | Dépendance | Rôle | Note |
@@ -242,11 +261,15 @@ Aucune dépendance npm ajoutée.
 
 Aucune dépendance npm : le glisser-déposer utilise l'API HTML5.
 
+### Étape 6
+Aucune dépendance ajoutée : le serveur SOCKS5 (`CONNECT` seul) est écrit à la main, le relais utilise `tokio::io::copy_bidirectional` (ADR-038).
+
 **Dépendances entre crates** : `core-ssh` et `core-vault` ne dépendent pas l'une de l'autre (ADR-004). C'est `src-tauri` qui fait le lien :
 - il lit une identité dans le coffre (mot de passe, clé privée) et la passe à `core-ssh` sous forme de `Credentials` ;
 - il stocke dans le coffre une clé générée par `core-ssh` (`generate_key`), comme une clé importée ;
 - pour un déploiement, il re-dérive la ligne de clé publique de la clé privée du coffre (`AuthorizedKeyLine::from_private`) ;
-- il implémente le trait `KnownHostsStorage` de `core-ssh` pour le coffre (`VaultKnownHosts`, ADR-027).
+- il implémente le trait `KnownHostsStorage` de `core-ssh` pour le coffre (`VaultKnownHosts`, ADR-027) ;
+- il convertit la définition d'un tunnel du coffre (`Tunnel`, `BindScope`) en `TunnelSpec` de `core-ssh` (`ListenScope`), revalidé au démarrage.
 
 Les futures crates `core-term`, `core-import` et `core-rdp` suivront la même règle.
 
@@ -257,7 +280,7 @@ Les futures crates `core-term`, `core-import` et `core-rdp` suivront la même r�
 | Mécanisme | Usage | Exemple |
 |---|---|---|
 | `invoke()` (commande) | Action ponctuelle avec un résultat | `app_info`, `ssh_connect`, `vault_unlock`, `host_save` |
-| `Channel<T>` passé en argument | Flux ou notification ciblée | Sortie et état d'une session SSH ; verrouillage du coffre (`vault_watch`) ; transferts et éditions SFTP (`sftp_open`, `sftp_edit`) ; plus tard état d'un tunnel |
+| `Channel<T>` passé en argument | Flux ou notification ciblée | Sortie et état d'une session SSH ; verrouillage du coffre (`vault_watch`) ; transferts et éditions SFTP (`sftp_open`, `sftp_edit`) ; état et compteurs d'un tunnel (`tunnel_start`) |
 
 Aucun événement global de Tauri n'est utilisé : la permission `core:event:*` n'est pas accordée à la fenêtre (ADR-028).
 
@@ -291,7 +314,7 @@ Coffre :
 | `vault_touch` | aucune (signale une activité) | aucune | `allow-vault-touch` |
 | `vault_watch` | `onEvent: Channel<VaultEventDto>` | aucune | `allow-vault-watch` |
 | `vault_set_auto_lock` | `minutes` (1, 5, 10, 15, 30 ou 60) | aucune | `allow-vault-set-auto-lock` |
-| `vault_snapshot` | aucune | `{ hosts[], groups[], identities[], keys[], snippets[], autoLockMinutes }` (voir ci-dessous) | `allow-vault-snapshot` |
+| `vault_snapshot` | aucune | `{ hosts[], groups[], identities[], keys[], snippets[], tunnels[], autoLockMinutes }` (voir ci-dessous) | `allow-vault-snapshot` |
 
 Carnet, clés et paramètres :
 
@@ -311,6 +334,9 @@ Carnet, clés et paramètres :
 | `key_delete` | `id` (refusé si une identité l'utilise) | aucune | `allow-key-delete` |
 | `snippet_save` | `request { id \| null, name, content, description }` (validé par `core-vault`, ADR-037) | `EntryId` | `allow-snippet-save` |
 | `snippet_delete` | `id` | aucune | `allow-snippet-delete` |
+| `tunnel_save` | `request { id \| null, name, hostId, kind, bindScope, bindPort, destHost, destPort, autoStart, exposureConfirmed }` ; `kind` = `local`, `remote` ou `dynamic`, `bindScope` = `loopback` ou `allInterfaces` (`exposureConfirmed` exigé), validé par `core-vault` (ADR-038) | `EntryId` | `allow-tunnel-save` |
+| `tunnel_delete` | `id` | aucune (n'arrête pas un tunnel démarré : l'interface l'arrête d'abord) | `allow-tunnel-delete` |
+| `tunnel_start` | `tunnelId`, `onEvent: Channel<SessionEventDto>` ; pour un tunnel exposé, boîte de dialogue native ouverte par le cœur avant tout | `SessionId` ; se pilote comme une session (`ssh_host_key_decision`, `ssh_auth_answer`) et s'arrête par `ssh_close` | `allow-tunnel-start` |
 | `known_host_list` | aucune | `[{ line, hosts, algorithm, fingerprint, revoked }]` | `allow-known-host-list` |
 | `known_host_delete` | `entry` (une entrée telle que reçue de `known_host_list`) | nombre de lignes retirées (0 ou 1) | `allow-known-host-delete` |
 | `settings_get` | aucune (lisible avant le déverrouillage) | `{ settings { language, theme, terminalFontSize }, firstRun }` | `allow-settings-get` |
@@ -345,6 +371,7 @@ Aucune commande n'accepte de politique de conflit : tout transfert démarre en �
 - le `password` d'une identité vaut `{ action: "keep" }`, `{ action: "clear" }` ou `{ action: "set", value }` ;
 - une identité renvoyée par `vault_snapshot` est `{ id, name, username, hasPassword, keyId }` : la présence d'un mot de passe, jamais sa valeur ;
 - un snippet est renvoyé comme `{ id, name, content, description, variables[] }` : ce n'est pas un secret (ADR-037), et ses variables sont calculées par le cœur ;
+- un tunnel est renvoyé comme `{ id, name, hostId, kind, bindScope, bindPort, destHost, destPort, autoStart }` ; les commandes de tunnel ne transportent aucun secret (identité de l'hôte lue dans le coffre par le cœur) ;
 - une clé, importée ou générée, est renvoyée avec sa seule partie publique (sans commentaire) et son empreinte ; un hôte avec ses champs descriptifs. Aucune commande n'exporte une clé privée (ADR-032).
 
 **Validation** : les structures Rust refusent les champs inconnus (`deny_unknown_fields`) ; un `EntryId` doit être un UUID ; adresse, port et utilisateur d'un hôte passent par les mêmes règles que la connexion SSH ; noms, étiquettes, notes et nombres d'entrées sont bornés dans `core-vault` (`model.rs`). Toute commande du carnet sur un coffre verrouillé renvoie `vault.locked`.
@@ -361,6 +388,8 @@ Aucune commande n'accepte de politique de conflit : tout transfert démarre en �
 | `authPrompt` | `round`, `name`, `instructions`, `prompts[{ text, echo }]` | Le serveur pose des questions (keyboard-interactive) : attendre `ssh_auth_answer` avec le même `round` (2 min). Texte nettoyé et borné par le cœur, affiché en texte brut |
 | `keyDeployed` | `added` (`true` : ajoutée ; `false` : déjà présente) | Déploiement réussi (`key_deploy`) ; `disconnected` (`ssh.session_ended`) suit aussitôt |
 | `connected` | aucun | Shell ouvert |
+| `tunnelReady` | `port` | Tunnel en place : écoute ouverte (sur le poste pour `-L` / `-D`, sur le serveur pour `-R`) |
+| `tunnelStats` | `active`, `total` | Compteurs de connexions relayées, au plus toutes les 250 ms |
 | `disconnected` | `code` (`ssh.*`) | Fin de session, toujours le dernier événement |
 
 **Événements SFTP** (`SftpEventDto`, JSON sur le `onEvent` de `sftp_open` pour les transferts, de `sftp_edit` pour les éditions, champ `type`). Ils ne contiennent aucun chemin local, seulement des noms.
@@ -382,7 +411,7 @@ La sortie du terminal passe sur `onOutput` en **octets bruts**, par lots de 8 ms
 
 **Contrôle de flux** (ADR-024) : l'interface acquitte par `ssh_ack` les octets affichés par xterm.js. Au-delà de 2 Mio non acquittés, la session arrête de lire le canal SSH ; le serveur est alors freiné par la fenêtre SSH. La saisie part par une file côté interface (`inputQueue.ts`) : un seul `ssh_write` en cours, pour que les frappes ne soient jamais réordonnées.
 
-**Cycle de vie d'une session** : chaque session vit dans une tâche tokio annulable (`SessionHandle`), enregistrée dans `SessionManager` (64 au plus). Un déploiement de clé (`SessionHandle::spawn_deploy`) est une session sans terminal : il compte dans cette limite, se pilote par les mêmes commandes et se ferme au verrouillage (ADR-033). Elle se retire d'elle-même à l'événement `disconnected`. Tout verrouillage du coffre ferme toutes les sessions (voir ci-dessous).
+**Cycle de vie d'une session** : chaque session vit dans une tâche tokio annulable (`SessionHandle`), enregistrée dans `SessionManager` (64 au plus). Un déploiement de clé (`SessionHandle::spawn_deploy`) et un tunnel (`SessionHandle::spawn_tunnel`, ADR-038) sont des sessions sans terminal : ils comptent dans cette limite, se pilotent par les mêmes commandes et se ferment au verrouillage (ADR-033). Elle se retire d'elle-même à l'événement `disconnected`. Tout verrouillage du coffre ferme toutes les sessions (voir ci-dessous).
 
 **Cycle de vie d'un client SFTP** (ADR-034) : il vit sur la connexion d'une session de terminal et est enregistré dans le `SftpRegistry` du `SessionManager`. La fin de la session (fermeture, coupure, `disconnected`) ferme ses clients SFTP, annule leurs transferts et arrête leurs éditions (copies locales supprimées). Un verrouillage ou un rechargement ferme tout et oublie en plus les dossiers locaux choisis.
 
@@ -573,6 +602,52 @@ Un envoi suit le même chemin dans l'autre sens : sources choisies dans la boît
 
 Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture du client 45 s ; 30 s par requête ; paquets de 256 Kio au plus ; listage de 10 000 entrées affichées, 20 000 requêtes READDIR et 120 s au plus ; résolution des cibles de liens d'un listage limitée à 256 liens et 10 s ; profondeur 64 et 100 000 éléments par opération récursive ; 1 000 éléments sélectionnés par transfert ; 64 transferts en attente par client.
 
+### Tunnels : démarrage et exposition (ADR-038)
+
+Chaque tunnel a **sa propre connexion SSH**, enregistrée comme une session : même TOFU, même authentification, fermeture au verrouillage. Les définitions sont dans le coffre ; `tunnel_start` ne reçoit que l'identifiant.
+
+```mermaid
+sequenceDiagram
+    participant UI as Interface (store tunnels)
+    participant C as Commande tunnel_start
+    participant G as ExposureGate
+    participant V as Coffre
+    participant S as core-ssh (spawn_tunnel)
+    participant SRV as Serveur SSH
+    UI->>C: tunnel_start(tunnelId, onEvent)
+    C->>V: définition et hôte (sans secret)
+    alt portée allInterfaces (0.0.0.0)
+        C->>G: une confirmation à la fois (sinon tunnels.confirmation_pending)
+        C->>C: boîte de dialogue native (nom, -L 0.0.0.0:…, hôte)
+        alt refus
+            C-->>UI: tunnels.exposure_refused
+        end
+        C->>V: relecture : définition ou hôte changés ? (tunnels.changed)
+    end
+    C->>V: identité de l'hôte, clés d'hôte connues
+    C->>S: TunnelParams (Target, Credentials, TunnelSpec)
+    C-->>UI: SessionId
+    S->>SRV: connexion, TOFU, authentification (hostKeyUnknown, authPrompt…)
+    alt -L / -D
+        S->>S: écoute sur 127.0.0.1 ou 0.0.0.0
+    else -R
+        S->>SRV: tcpip-forward (sinon ssh.tunnel_forward_refused)
+    end
+    S-->>UI: tunnelReady(port)
+    loop connexion relayée
+        S->>SRV: direct-tcpip (-L, -D après négociation SOCKS5) ou forwarded-tcpip accepté (-R)
+        S-->>UI: tunnelStats(active, total), 4 par seconde au plus
+    end
+    UI->>S: ssh_close (arrêt) ou verrouillage
+    S-->>UI: disconnected (écoute fermée, port libéré)
+```
+
+- **`-L`** : écoute sur le poste, canal `direct-tcpip` vers la destination vue du serveur ; l'origine annoncée au serveur est `127.0.0.1:0` (l'adresse du client local n'est pas transmise).
+- **`-D`** : écoute sur le poste, négociation SOCKS5 (`socks.rs` : `CONNECT` seul, sans authentification, 10 s et taille bornées ; IPv4, IPv6 ou nom de domaine résolu par le serveur), puis `direct-tcpip`.
+- **`-R`** : `tcpip-forward` demandé au serveur ; un `forwarded-tcpip` n'est accepté que sur le port demandé, puis relié à la destination **configurée** (connexion locale en 10 s). Le `ClientHandler` refuse tous les autres canaux ouverts par le serveur, pour toutes les sessions.
+- **Bornes** : 128 connexions simultanées par tunnel (au-delà : refus, y compris d'un canal `-R` déjà accepté). Erreurs d'écoute : `ssh.tunnel_port_in_use`, `ssh.tunnel_bind_failed`.
+- **Démarrage automatique** : `TunnelBackground`, monté seulement coffre déverrouillé, démarre une fois par déverrouillage les tunnels marqués `autoStart` ; un tunnel exposé passe quand même par la boîte native.
+
 ## 4. Fenêtre, stockage et journaux
 
 ### Fenêtre principale
@@ -586,7 +661,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 
 | Fichier | Contenu | Protection | Disponible |
 |---|---|---|---|
-| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037) ; plus tard tunnels | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
+| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037), tunnels (étape 6, champ `tunnels` ajouté de la même façon, ADR-038) | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
 | `vault.younji.bak` | Version précédente du coffre | Chiffré. Copié de façon atomique avant chaque remplacement ; recopié depuis le nouveau fichier après un changement de mot de passe, ou supprimé si la copie échoue | Oui (étape 2) |
 | `edits/` (dans `app_local_data_dir`) | Copies temporaires des fichiers distants ouverts en édition (`younji-edit-*`) | Dossier 0700, fichier 0600 sous Linux. Supprimées à la fin de l'édition, de la session et au verrouillage ; copies abandonnées depuis plus de 24 h supprimées au démarrage | Oui (étape 4) |
 | `settings.json` | Langue, thème, taille de police du terminal | En clair, **aucune donnée sensible** (il doit être lisible avant le déverrouillage). Écriture atomique ; lecture limitée à 64 Kio ; chaque valeur relue est validée, une valeur inattendue reprend sa valeur par défaut | Oui (étape 2) |
@@ -608,15 +683,15 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 ## 5. Gestion des erreurs
 1. Les crates renvoient des erreurs `thiserror` précises. `SshError` (`core-ssh`) et `VaultError` (`core-vault`) ne transportent aucune donnée : ni secret, ni entrée utilisateur, ni texte du serveur.
 2. `src-tauri` les convertit en `AppError { code }`. Seul le code est sérialisé. Un test Rust vérifie que chaque code a sa traduction FR et EN.
-   - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`. Ajoutés à l'étape 3 : `auth_prompt_invalid`, `auth_prompt_timeout`, `auth_cancelled`, `no_pending_prompt`, `invalid_answers`, `key_generation_failed`, `invalid_public_key`, `deploy_failed`. Ajoutés à l'étape 4 : `sftp_unavailable`, `sftp_failed`, `sftp_not_found`, `sftp_permission_denied`, `sftp_already_exists`, `sftp_not_directory`, `sftp_invalid_path`, `sftp_not_file`, `sftp_invalid_mode`, `sftp_unsafe_name`, `sftp_too_many_entries`, `local_io`, `local_outside_root`, `local_root_forbidden`, `transfer_cancelled`, `transfer_not_found`, `edit_too_large`, `edit_conflict`. Le texte d'état renvoyé par le serveur SFTP n'est jamais recopié : il est traduit en code.
-   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
-   - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal` ; depuis l'étape 4 : `sftp.not_found`, `sftp.too_many`, `sftp.edit_not_found`, `sftp.too_many_edits`, `local.root_unknown`, `editor.open_failed`.
+   - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`. Ajoutés à l'étape 3 : `auth_prompt_invalid`, `auth_prompt_timeout`, `auth_cancelled`, `no_pending_prompt`, `invalid_answers`, `key_generation_failed`, `invalid_public_key`, `deploy_failed`. Ajoutés à l'étape 4 : `sftp_unavailable`, `sftp_failed`, `sftp_not_found`, `sftp_permission_denied`, `sftp_already_exists`, `sftp_not_directory`, `sftp_invalid_path`, `sftp_not_file`, `sftp_invalid_mode`, `sftp_unsafe_name`, `sftp_too_many_entries`, `local_io`, `local_outside_root`, `local_root_forbidden`, `transfer_cancelled`, `transfer_not_found`, `edit_too_large`, `edit_conflict`. Ajoutés à l'étape 6 : `tunnel_port_in_use`, `tunnel_bind_failed`, `tunnel_forward_refused`. Le texte d'état renvoyé par le serveur SFTP n'est jamais recopié : il est traduit en code.
+   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet` ; depuis l'étape 6 : `invalid_tunnel`, `tunnel_exposure_unconfirmed`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
+   - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal` ; depuis l'étape 4 : `sftp.not_found`, `sftp.too_many`, `sftp.edit_not_found`, `sftp.too_many_edits`, `local.root_unknown`, `editor.open_failed` ; depuis l'étape 6 : `tunnels.exposure_refused`, `tunnels.confirmation_pending`, `tunnels.changed`.
 3. `src/lib/ipc.ts` normalise toute erreur reçue en `{ code }` ; un message brut n'est jamais propagé, et une erreur de forme inattendue devient `unknown`.
 4. L'interface affiche `t('errors.<code>')`. Le détail technique part dans les journaux, **sans secret**.
 
 ## 6. Interface
 - **Porte du coffre** (`features/vault/`) : au premier lancement, création du coffre (mot de passe et confirmation, indicateur de robustesse en direct, avertissement « aucune récupération possible ») ; ensuite, écran de déverrouillage, avec la cause du dernier verrouillage. Rien d'autre n'est affiché tant que le coffre est verrouillé.
-- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie ; Tunnels affiche encore un emplacement réservé.
+- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie.
 - **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`).
 - **Clés** (`features/keys/`, KEY-01 à KEY-03, HST-03, HKY-04) : clés générées dans le coffre (`KeyGenerateDialog`, Ed25519 par défaut) ou importées (boîte de dialogue du système) ; renommage, copie et export `.pub` de la clé publique, déploiement sur un hôte du carnet (`KeyDeployDialog`, qui reprend les dialogues de clé d'hôte et de questions du serveur), suppression ; identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
 - **Onglets de session** (`stores/sessions.ts`, `TabBar`) : deux sortes d'onglets, `kind: 'terminal'` et `kind: 'sftp'` (voir SFTP ci-dessous). Ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` (↔ `authPrompt`) → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. En `authPrompt`, l'onglet affiche `AuthPromptDialog` : hôte qui pose les questions, texte du serveur encadré comme « Message envoyé par le serveur », rappel que Younji ne demande jamais le mot de passe maître ici ; réponses masquées sauf si le serveur autorise l'écho, champs vidés dès l'envoi. Le store garde la demande en attente, jamais les réponses. La connexion rapide propose un troisième mode, « Questions du serveur (2FA) », sans aucun secret saisi d'avance. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.
@@ -625,6 +700,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 - **Panneaux** (SSH-07, ADR-035) : un onglet de terminal se découpe à droite (Ctrl+Maj+D) ou en bas (Ctrl+Maj+O), 8 panneaux au plus. Chaque panneau est une session à part (sa connexion, son `TerminalSession`, son panneau SFTP), rangée dans `tabs` avec `paneOf` = onglet qui l'affiche ; seul le panneau racine apparaît dans la barre d'onglets. `layouts[onglet]` garde l'arbre de disposition (`layout.ts` : feuilles = panneaux, nœuds `row` / `column` avec un ratio), `focusedPane[onglet]` le panneau actif. Un nouveau panneau reprend la cible du panneau d'origine (`split.ts`) : connexion directe pour un hôte du carnet, formulaire pré-rempli pour une connexion rapide. `SplitView` dessine l'arbre ; ses séparateurs se déplacent à la souris ou au clavier. Navigation par Ctrl+Maj+flèches (depuis un terminal), fermeture d'un panneau par Ctrl+Maj+X (le voisin prend la place ; si c'est le panneau racine, le suivant est promu onglet). Chaque panneau affiche en tête le nom de son serveur, et une barre d'outils (`PaneToolbar`) : découpe, snippets, diffusion, SFTP, fermeture.
 - **Diffusion de la saisie** (`features/broadcast/`, store `broadcast`, SSH-08, ADR-036) : activée par Ctrl+Maj+I ou la barre d'outils, après le dialogue `BroadcastDialog` (sessions connectées de tous les onglets, cochées une à une, nom et adresse, 2 au moins). `TerminalSession.handleInput` recopie la saisie d'une cible dans la file d'entrée de chaque cible ; les réponses automatiques d'xterm et les rapports souris binaires restent dans leur session. Un collage diffusé passe toujours par la confirmation. Indicateurs : `BroadcastBanner` en haut de la fenêtre, bordure rouge et en-tête « DIFFUSION » sur les cibles, pastille dans `TabBar`. Arrêt : bouton, Ctrl+Maj+I, verrouillage, moins de 2 cibles (une cible déconnectée est retirée).
 - **Snippets** (`features/snippets/`, SNP-01 à SNP-03, ADR-037) : section Snippets (liste, recherche, création, modification, suppression) ; la liste vient de `vault_snapshot`, l'enregistrement passe par `snippet_save` / `snippet_delete`. Ctrl+Maj+S ou la barre d'outils d'un panneau ouvre `SnippetPicker`, puis `SnippetRunDialog` : valeurs des variables (une ligne, validées), aperçu du texte final, sessions cochées, « Insérer » ou « Exécuter ». L'envoi passe par `TerminalSession.sendText`, vers les seules sessions cochées, sans diffusion. Les dialogues sont pilotés par le store `snippetRun`.
+- **Tunnels** (`features/tunnels/`, store `tunnels`, TUN-01 à TUN-03, ADR-038) : section Tunnels (liste avec écoute, destination et équivalent OpenSSH, état, compteurs « en cours / total », dernière erreur ; démarrer, arrêter, modifier, supprimer). `TunnelForm` : type, hôte du carnet, portée `127.0.0.1` par défaut ; choisir `0.0.0.0` affiche un avertissement et exige de cocher une confirmation. Un tunnel exposé porte en permanence un badge « Exposé au réseau (0.0.0.0) » et une bordure orange. Un tunnel démarré ne se modifie pas ; le supprimer l'arrête d'abord. Le store `tunnels` garde les tunnels démarrés hors de la section ; `TunnelBackground`, monté avec l'application, affiche leurs dialogues de clé d'hôte et de 2FA quelle que soit la section et lance le démarrage automatique. Au verrouillage, le store est vidé (`lock.ts`).
 - **SFTP** (`features/sftp/`, SFTP-01 à SFTP-05, ADR-034) :
   - **Panneau latéral** à droite du terminal, ouvert par un bouton ou Ctrl+Maj+E quand la session est connectée. Il **suit le dossier du shell** grâce à la séquence OSC 7 (`registerOscHandler(7)`, chemin décodé strictement par `osc7.ts` et rangé dans `remoteCwd`). Si le shell n'envoie pas OSC 7, le bouton « Activer le suivi » insère dans le terminal une intégration au prompt constante (bash, zsh), comme un collage et sans Entrée : l'utilisateur la relit et la valide.
   - **Onglet double panneau** (`SftpTabPanel`, `kind: 'sftp'`, `parentTabId` = onglet de terminal) : dossier local à gauche (`LocalBrowser`, dans une racine choisie par `local_pick_root`, navigation seule), serveur à droite (`RemoteBrowser`), glisser-déposer interne entre les deux (types MIME propres à Younji, `dnd.ts`). Il utilise la connexion de son terminal : il se ferme avec lui et affiche un message si la session se termine. La section SFTP de la barre latérale liste les sessions connectées pour ouvrir l'un ou l'autre.
@@ -634,7 +710,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 - **Paramètres** (APP-05, VLT-03, VLT-04) : langue (système, français, anglais), thème (système, clair, sombre) et taille de police du terminal (8 à 32), appliqués à chaud et enregistrés dans `settings.json` ; délai de verrouillage automatique (1, 5, 10, 15, 30 ou 60 min, enregistré dans le coffre) ; changement du mot de passe maître ; raccourcis clavier ; nom et version via `app_info`.
 - **Langue** : en mode « système », détectée depuis `navigator.languages` (première langue prise en charge), repli sur l'anglais. Fixée avant le premier rendu pour éviter un affichage dans la mauvaise langue.
 - **Thème** : en mode « système », suit `prefers-color-scheme` à chaud ; classe `light` / `dark` sur `<html>`.
-- Stores zustand : `useSettings`, `useUi`, `useSessions` (onglets et panneaux), `useBroadcast` (cibles de la diffusion), `useSnippetRun` (dialogues d'envoi de snippet), `useSftp` (transferts et éditions affichés) et `useVault` (état du coffre et contenu affichable, sans secret, vidé dès le verrouillage).
+- Stores zustand : `useSettings`, `useUi`, `useSessions` (onglets et panneaux), `useBroadcast` (cibles de la diffusion), `useSnippetRun` (dialogues d'envoi de snippet), `useTunnels` (tunnels démarrés), `useSftp` (transferts et éditions affichés) et `useVault` (état du coffre et contenu affichable, sans secret, vidé dès le verrouillage).
 
 ## 7. Outillage et CI/CD
 
@@ -649,6 +725,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 - **Contre OpenSSH** (`npm run test:integration`) : `crates/core-ssh/tests/openssh.rs`, tests `#[ignore]`, dont le déploiement d'une clé générée (ajout, second passage sans doublon, connexion par clé, permissions 700/600, puis retrait de la ligne). `scripts/integration.mjs` charge `.env.test` s'il existe puis lance `cargo test --workspace -- --ignored`. La cible est lue dans les variables `YOUNJI_TEST_*` (`ENVIRONNEMENT_DE_TEST.md` §6) ; un test dont la variable manque est ignoré, sauf si `YOUNJI_TEST_REQUIRED=1`.
 - **SFTP sans serveur** (`cargo test -p core-ssh`) : la logique est testée contre un faux système de fichiers en mémoire (`sftp/memfs.rs`, qui implémente `RemoteFs`) et un vrai dossier local temporaire : listage (noms impossibles écartés, suspects signalés), suppression récursive sans suivre les liens, renommage sans écrasement, chmod borné, dossier récursif avec accents, espaces et fichiers vides, noms malveillants qui n'écrivent jamais hors de la destination, liens distants non suivis, lien local planté remplacé et non suivi, politiques de conflit, annulation sans fichier partiel (local et distant), liens locaux non suivis à l'envoi, arborescences démesurées refusées, file (conflits, annulation), édition (renvoi, conflit, noms refusés, taille), nettoyage des copies abandonnées, Mark-of-the-Web. Côté `src-tauri` : désérialisation stricte des requêtes (aucun chemin absolu accepté), événements sans chemin local, registre (racines oubliées au verrouillage), éditeur imposé, traduction de chaque code. Côté interface (Vitest) : décodage OSC 7, intégration au prompt constante et jamais validée d'office, panneau, listes, file de transferts, dialogues.
 - **SFTP contre OpenSSH** : `sftp_round_trip_of_a_recursive_folder` (`openssh.rs`, `#[ignore]`) ouvre le SFTP sur une session, envoie un dossier (accents, espaces, fichier et dossier vides, fichier de 3 Mio), le liste, le retélécharge et compare le contenu octet par octet ; puis renommage sans écrasement, chmod, suppression récursive, et vérifie que le SFTP ne répond plus après la fin de la session.
+- **Tunnels** : tests unitaires de `socks.rs` (négociation IPv4, IPv6, domaine ; méthodes, commandes et versions refusées ; tailles) et de `TunnelSpec`. `crates/core-ssh/tests/tunnels.rs` (serveur russh en mémoire, serveurs d'écho locaux, sans réseau externe) : `-L`, `-D` via SOCKS5, `-R`, refus d'un `forwarded-tcpip` non demandé, arrêt qui libère le port et coupe les connexions relayées, port déjà utilisé, `-R` refusé par le serveur. Contre OpenSSH (`openssh.rs`, `#[ignore]`) : `-L` et `-D`. Côté `src-tauri` : désérialisation stricte, paramètres lus dans le coffre, confirmation native réservée aux tunnels exposés, démarrage refusé si la définition a changé, une confirmation à la fois. Côté interface (Vitest) : formulaire (valeurs par défaut sûres, confirmation pour `0.0.0.0`), store, liste et indicateur d'exposition.
 - **Serveur de test** : `tests/docker/sshd/` (Debian 12 épinglée par empreinte, OpenSSH, sous-système SFTP fourni par `openssh-sftp-server`). Aucun secret dans l'image : le mot de passe arrive par un fichier d'environnement, les clés autorisées par un volume en lecture seule, et les clés d'hôte sont régénérées à chaque démarrage.
 
 ### `ci.yml` (Linux, à chaque push et PR)

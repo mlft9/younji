@@ -39,6 +39,10 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 032 | Clés générées dans le coffre, sans passphrase ni export de la clé privée | Acceptée, prise en autonomie, à relire ; écart à KEY-01 à trancher |
 | 033 | Déploiement de clé par commande `sh` constante et entrée standard | Acceptée, prise en autonomie, à relire |
 | 034 | SFTP sur la connexion du terminal, dossiers locaux désignés par identifiant, éditeur imposé | Acceptée, prise en autonomie, à relire |
+| 035 | Panneaux (split) : une session par panneau, arbre de disposition par onglet | Acceptée, prise en autonomie, à relire |
+| 036 | Diffusion de la saisie côté interface, cibles explicites | Acceptée, prise en autonomie, à relire |
+| 037 | Snippets dans le coffre, variables sans échappement automatique | Acceptée, prise en autonomie, à relire |
+| 038 | Tunnels sur une connexion dédiée, exposition confirmée nativement par le cœur | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -520,3 +524,38 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Le contenu étant revérifié au chargement, **durcir une règle plus tard** (taille, caractères admis) exigera une migration, ou d'écarter les snippets devenus invalides, pour ne pas rendre un coffre existant illisible.
 - Une valeur de variable peut contenir des métacaractères du shell (`;`, `$( )`) : c'est voulu, l'aperçu les montre.
 - Le champ `snippets` est toujours écrit, même vide : un coffre enregistré une fois par cette version n'est plus lisible par une version antérieure à l'étape 5 (refus propre, sans perte).
+
+## ADR-038 — Tunnels sur une connexion dédiée, exposition confirmée nativement par le cœur
+**Statut** : Acceptée (24/11/2026) — prise en autonomie, à relire par le porteur. Prolonge ADR-026 (verrouillage) et ADR-037 (ajout pur au schéma du coffre).
+**Contexte** : TUN-01 à TUN-03 demandent les redirections `-L`, `-R` et `-D` (SOCKS5), un gestionnaire (rattachement à un hôte, démarrage, arrêt, état, démarrage automatique) et une écoute sur `127.0.0.1` par défaut, avec avertissement pour `0.0.0.0`. Menace M7 (`SECURITE.md` §2) : un tunnel exposé par erreur fait du poste un relais vers le réseau du serveur. Menace M4 : une WebView compromise peut appeler l'IPC avec n'importe quel drapeau. Un serveur malveillant peut aussi ouvrir des canaux vers le poste.
+**Décision** :
+- **Une connexion SSH dédiée par tunnel** (équivalent de `ssh -N -L …`) : troisième type de session `core-ssh` (`Purpose::Tunnel`, `SessionHandle::spawn_tunnel`), enregistrée dans le `SessionManager` comme une session. Même TOFU, même authentification (identité de l'hôte, 2FA), même pilotage (`ssh_host_key_decision`, `ssh_auth_answer`, `ssh_close`), fermeture au verrouillage (ADR-026). L'arrêt ferme l'écoute (port libéré) et toutes les connexions relayées.
+- **Définitions dans le coffre** (`core-vault`, champ `tunnels` avec `#[serde(default)]`, **sans changer `SCHEMA_VERSION`**, comme ADR-037) : nom, hôte du carnet, type, portée, port d'écoute, destination, démarrage automatique. 256 tunnels au plus, validation revérifiée au chargement. Trois commandes : `tunnel_save`, `tunnel_delete`, `tunnel_start` ; la liste arrive avec `vault_snapshot`.
+- **Portée d'écoute fermée** : `loopback` (`127.0.0.1`, par défaut) ou `allInterfaces` (`0.0.0.0`). Aucune adresse libre, pas d'IPv6.
+- **Exposition sur `0.0.0.0`**, trois verrous :
+  1. case de confirmation dans le formulaire ;
+  2. drapeau `exposureConfirmed` exigé par le cœur à chaque enregistrement (`vault.tunnel_exposure_unconfirmed`), garde-fou contre un bogue de l'interface ;
+  3. **boîte de dialogue native ouverte par le cœur à chaque démarrage** d'un tunnel exposé, démarrage automatique compris (`ExposureGate`). Une seule ouverte à la fois (`tunnels.confirmation_pending`). Le cœur ne garde **aucun secret** pendant l'attente, seulement la définition et l'hôte affichés ; il relit ensuite le coffre et **refuse** le démarrage si l'un ou l'autre a changé (`tunnels.changed`). Un refus donne `tunnels.exposure_refused`. Le texte affiché est débarrassé des caractères de contrôle et invisibles.
+- **SOCKS5 écrit à la main** (`core-ssh/src/tunnel/socks.rs`) : `CONNECT` seul, sans authentification, négociation bornée en taille et en 10 s ; `BIND` et `UDP ASSOCIATE` refusés. Les noms de domaine sont résolus par le serveur : aucune requête DNS du poste pour la destination.
+- **Canaux ouverts par le serveur refusés**, pour toutes les connexions (shells et déploiements compris) : `session`, `direct-tcpip`, `x11`, agent, sockets Unix. Seul un `forwarded-tcpip` sur le port demandé par le tunnel `-R` de la connexion est accepté, et relié à la destination **configurée**, jamais à l'adresse annoncée par le serveur.
+- **Ressources bornées** : 128 connexions simultanées par tunnel, connexion locale d'un `-R` en 10 s, compteurs envoyés au plus toutes les 250 ms.
+- **Démarrage automatique** (désactivé par défaut) : après chaque déverrouillage du coffre, une fois ; jamais avant.
+- **Suppression en cascade** : supprimer un hôte supprime ses tunnels.
+
+**Alternatives écartées** :
+- Greffer les tunnels sur la connexion d'un terminal : couplerait leur durée de vie à celle de l'onglet et empêcherait un arrêt qui libère tout.
+- Adresse d'écoute libre : on pourrait exposer « un peu » par erreur, sur une interface mal choisie ; à rouvrir si le besoin d'une interface précise apparaît.
+- Confirmation de l'exposition uniquement dans l'interface ou par le drapeau IPC : une WebView compromise la contourne (M4).
+- Confirmation unique, à l'enregistrement : un démarrage automatique exposerait le poste sans geste de l'utilisateur.
+- Garder la session prête (secrets compris) pendant la confirmation : le coffre peut se verrouiller entre-temps, et la définition changer.
+- Crate SOCKS complète (`fast-socks5`…) : `BIND`, `UDP ASSOCIATE` et authentification inutiles, donc de la surface et une dépendance de plus.
+- Garder les tunnels d'un hôte supprimé : tunnels orphelins, impossibles à démarrer.
+
+**Conséquences** :
+- Chaque tunnel est une authentification de plus : un hôte « mot de passe + code » redemande un code à chaque démarrage. Les tunnels comptent dans la limite de 64 sessions.
+- Un tunnel exposé en démarrage automatique ouvre une boîte native au déverrouillage ; s'il y en a plusieurs, seul le premier obtient la sienne, les autres échouent avec `tunnels.confirmation_pending`.
+- Un tunnel sur `127.0.0.1` reste utilisable par tout processus du poste, y compris d'un autre compte (comme `ssh -L` / `-D`) : le proxy SOCKS n'a pas d'authentification.
+- Pour un `-R` en `0.0.0.0`, l'exposition réelle dépend de `GatewayPorts` côté serveur.
+- Modifier une définition n'agit pas sur un tunnel démarré : l'interface interdit la modification d'un tunnel démarré et l'arrête avant de le supprimer.
+- Le champ `tunnels` est toujours écrit : un coffre enregistré par cette version n'est plus lisible par une version antérieure à l'étape 6 (refus propre, sans perte). Durcir une règle de validation plus tard demandera une migration, comme pour les snippets.
+- Les nouveaux codes d'erreur sont `vault.invalid_tunnel`, `vault.tunnel_exposure_unconfirmed`, `ssh.tunnel_port_in_use`, `ssh.tunnel_bind_failed`, `ssh.tunnel_forward_refused` et `tunnels.*`.

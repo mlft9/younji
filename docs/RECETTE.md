@@ -1,4 +1,4 @@
-# Recette manuelle — étapes 0 à 5
+# Recette manuelle — étapes 0 à 6
 
 Fiche de test du porteur : ce qu'il faut installer, puis les tests à dérouler, étape par étape.
 Coche au fur et à mesure, note ce qui coince (capture d'écran si possible), puis envoie tes retours avec `/retour`.
@@ -16,6 +16,7 @@ Légende : 🔒 test de sécurité · ⭐ test prioritaire (le minimum à faire 
 - [ ] `npm run tauri dev` ouvre la fenêtre Younji.
 - [ ] Un éditeur hexadécimal ou Notepad++ (pour regarder le fichier du coffre).
 - [ ] Une appli TOTP sur ton téléphone (Aegis, Google Authenticator…), pour la 2FA.
+- [ ] **Firefox** et **Python 3** (`python --version`), pour les tests de tunnels (étape 6).
 
 > Le coffre et les réglages sont dans `%APPDATA%\io.github.mlft9.younji\` (`vault.younji`, `settings.json`).
 > Pour repartir d'un état « premier lancement », ferme Younji et renomme ce dossier (ne le supprime pas, garde-le en sauvegarde).
@@ -45,6 +46,9 @@ Sous Ubuntu, les tests restent les mêmes, avec ces différences :
 | Édition SFTP dans le Bloc-notes | S'ouvre dans l'éditeur graphique trouvé (`gnome-text-editor`, `gedit`, `kate`…) |
 | Dossiers locaux refusés `C:\`, `~\.ssh` | `/`, ton dossier personnel `~` entier, `~/.ssh` : refusés |
 | Mark-of-the-Web (« provient d'un autre ordinateur ») | 🔒 À la place : `ls -l` sur un fichier téléchargé affiche `-rw-------` (0600), même s'il était exécutable sur le serveur |
+| `Get-NetTCPConnection -LocalPort 18080 -State Listen` (tunnels) | `ss -ltn \| grep 18080` : aucune ligne = port libéré |
+| Serveur web de test dans `$env:TEMP\younji-r` (tunnels) | `mkdir -p /tmp/younji-r && echo "Bonjour depuis le PC" > /tmp/younji-r/index.html && cd /tmp/younji-r && python3 -m http.server 9000 --bind 127.0.0.1` |
+| Boîte de confirmation native Windows (tunnel exposé) | Boîte de dialogue GTK, même contenu |
 | Installeur Windows (étape 0) | Installer le `.deb` (`sudo apt install ./younji_*.deb`) ou lancer l'AppImage produits par le workflow **build** |
 
 ### A2. VM `younji-deb` sur Proxmox (obligatoire)
@@ -187,6 +191,67 @@ Connecté en terminal sur `testpwd` :
 - [ ] SNP-03 : `service` = `cron` vers 2 sessions cochées sur 3 : seules ces deux l'exécutent ; le bouton indique « Exécuter dans 2 sessions ».
 - [ ] Snippet sur deux lignes (`whoami` / `hostname`) : avertissement « plusieurs lignes » ; avec « Insérer », bash n'exécute rien avant Entrée.
 - [ ] Langue EN : sections Snippets, diffusion et infobulles des panneaux en anglais (Ctrl+Shift+…).
+
+### Étape 6 — Tunnels SSH
+
+> **Préparation sur `younji-deb`** (snapshot `base-propre`) :
+> - Serveur web de test, à laisser tourner : `mkdir -p ~/www && echo "Bonjour depuis younji-deb" > ~/www/index.html && cd ~/www && python3 -m http.server 8080 --bind 127.0.0.1`
+> - Nom résolu **uniquement** par la VM (prouve que `-D` fait résoudre les noms par le serveur) : `echo "127.0.0.1 younji-socks.test" | sudo tee -a /etc/hosts`
+> - `sudo sshd -T | grep -Ei 'allowtcpforwarding|gatewayports'` : attendu `allowtcpforwarding yes` et `gatewayports no`.
+> - Sauvegarde des clés d'hôte avant le test de clé modifiée : `sudo cp -a /etc/ssh/ssh_host_* /root/`
+>
+> **Préparation sur le PC** (PowerShell) :
+> - Serveur web local, à laisser tourner : `mkdir $env:TEMP\younji-r ; "Bonjour depuis le PC" | Out-File -Encoding ascii $env:TEMP\younji-r\index.html ; cd $env:TEMP\younji-r ; python -m http.server 9000 --bind 127.0.0.1`
+> - (Facultatif) `npm run test:integration` avec les variables `YOUNJI_TEST_*`.
+> - `npm run tauri dev`, déverrouiller ; hôte `younji-deb` du carnet avec `testpwd` (identité à mot de passe).
+
+**Redirection locale `-L` et gestionnaire (TUN-01, TUN-02)**
+- [ ] (Facultatif) `npm run test:integration` : les 11 tests OpenSSH passent, dont 2 de tunnels.
+- [ ] ⭐ Tunnels → « Nouveau » : portée `127.0.0.1` par défaut, démarrage automatique décoché.
+- [ ] ⭐ Tunnel « Web », `-L`, port `18080` → `127.0.0.1:8080`. Démarrer : clé d'hôte demandée si inconnue, puis état actif sur `127.0.0.1:18080`.
+- [ ] ⭐ Firefox, `http://127.0.0.1:18080/` → « Bonjour depuis younji-deb ».
+- [ ] Rafraîchir 3 fois : le total augmente, « en cours » redescend à 0.
+- [ ] 2e tunnel `-L` `18022` → `127.0.0.1:22` ; deux `ssh -p 18022 testpwd@127.0.0.1` ouverts → « 2 en cours », puis 0 après `exit`.
+- [ ] ⭐🔒 Arrêter « Web » ; `Get-NetTCPConnection -LocalPort 18080 -State Listen` → rien (port libéré).
+
+**Proxy SOCKS5 `-D`**
+- [ ] ⭐ Tunnel « Socks », `-D` `1080` en `127.0.0.1` ; Firefox → Paramètres réseau → proxy manuel SOCKS v5 `127.0.0.1:1080`, cocher « Utiliser un DNS distant ».
+- [ ] ⭐ Firefox, `http://younji-socks.test:8080/` → page de la VM ; le compteur bouge. Remettre ensuite Firefox sans proxy.
+
+**Redirection distante `-R`**
+- [ ] ⭐ Tunnel « Retour », `-R` port serveur `9000` → `127.0.0.1:9000` côté PC. Démarrer.
+- [ ] ⭐ Sur la VM : `curl http://127.0.0.1:9000/` → « Bonjour depuis le PC ».
+- [ ] 🔒 Arrêter « Retour » ; sur la VM, `ss -ltn | grep 9000` → rien.
+
+**Modification et suppression**
+- [ ] Modifier un tunnel démarré : bouton désactivé (« arrêtez le tunnel pour le modifier »).
+- [ ] Supprimer un tunnel démarré : il est arrêté (port libéré) puis supprimé.
+
+**Exposition sur `0.0.0.0` (TUN-03)**
+- [ ] ⭐🔒 Tunnel « Expo », `-L` `18082` → `127.0.0.1:8080` en `0.0.0.0` : avertissement affiché, enregistrement impossible sans cocher la confirmation.
+- [ ] 🔒 Une fois enregistré : badge permanent « Exposé au réseau (0.0.0.0) » et bordure orange dans la liste.
+- [ ] ⭐🔒 Démarrer « Expo » → boîte de dialogue **native** Windows (nom, `-L 0.0.0.0:18082:127.0.0.1:8080`, hôte). Annuler → erreur « démarrage annulé », rien n'écoute sur 18082.
+- [ ] 🔒 Démarrer à nouveau et confirmer ; depuis la VM, `curl http://<IP du PC>:18082/` (autoriser le pare-feu Windows) → page de la VM.
+- [ ] 🔒 Deux tunnels exposés démarrés très vite l'un après l'autre : une seule boîte native ; le second affiche « confirmation déjà ouverte ».
+
+**Démarrage automatique et verrouillage**
+- [ ] Cocher le démarrage automatique sur « Web » et « Expo » ; relancer Younji et déverrouiller : « Web » démarre seul, « Expo » ouvre d'abord la boîte native. Rien ne démarre avant le déverrouillage. *(Avec plusieurs tunnels exposés en démarrage automatique, seul le premier obtient sa boîte ; les autres affichent « confirmation déjà ouverte ».)*
+- [ ] ⭐🔒 Tunnels démarrés → Verrouiller ; `Get-NetTCPConnection -LocalPort 18080,1080 -State Listen` → rien. Au déverrouillage, seuls les tunnels en démarrage automatique repartent, une seule fois.
+- [ ] 🔒 Même test avec le verrouillage automatique (délai d'1 min dans les Paramètres).
+
+**Erreurs et sécurité de la connexion**
+- [ ] Sur le PC : `python -m http.server 18083 --bind 127.0.0.1` ; tunnel `-L` sur `18083` → « port déjà utilisé ».
+- [ ] Serveur web de la VM actif sur 8080 ; `-R` sur le port serveur `8080` → « le serveur refuse d'écouter ».
+- [ ] Formulaire : port `0`, `70000`, destination vide → refusés avant tout appel au cœur, message traduit.
+- [ ] Mauvais mot de passe dans l'identité → échec d'authentification, aucun port ouvert.
+- [ ] 🔒 Supprimer la clé d'hôte connue, démarrer, refuser la clé → arrêt, aucun port ouvert.
+- [ ] 🔒 Régénérer les clés d'hôte de la VM (`sudo rm /etc/ssh/ssh_host_*; sudo ssh-keygen -A; sudo systemctl restart ssh`) ; démarrer « Web » → bloqué « clé modifiée », aucune option pour passer outre. Restaurer : `sudo cp -a /root/ssh_host_* /etc/ssh/ && sudo systemctl restart ssh`.
+- [ ] 🔒 Hôte `test2fa` sans identité, tunnel `-L` `18084` → `127.0.0.1:8080` : questions mot de passe et code TOTP affichées même hors de la section Tunnels ; puis tunnel actif et page joignable.
+- [ ] Code TOTP faux (attendre le code suivant) → refus, aucun port ouvert.
+- [ ] Pendant la 2FA, « Arrêter » ou « Annuler » → arrêt propre, aucune boîte restée ouverte.
+- [ ] Débrancher la carte réseau de la VM (Proxmox) avec « Web » actif → après le keepalive (~45 s), « Arrêté » avec une erreur, port libéré.
+- [ ] Supprimer l'hôte `younji-deb` → ses tunnels disparaissent.
+- [ ] Langue EN, refaire le démarrage de « Expo » et le test « port déjà utilisé » → textes en anglais, boîte native comprise.
 
 ---
 
