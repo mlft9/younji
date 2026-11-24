@@ -43,12 +43,13 @@ const UNSAFE_TEXT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
 /** Délai après une frappe pendant lequel `onData` est attribué à l'utilisateur. */
 const USER_INPUT_WINDOW_MS = 100;
 /**
- * Réponses automatiques d'xterm : position du curseur (`ESC[l;cR`), identification
+ * Réponses automatiques d'xterm : position du curseur (`ESC[l;cR`, `ESC[?l;cR`), état
+ * (`ESC[0n`), modes (`ESC[?2004;1$y`), identification
  * (`ESC[?…c`, `ESC[>…c`), focus (`ESC[I`, `ESC[O`), souris (`ESC[M…`, `ESC[<…`), chaînes
  * OSC (`ESC]`) et DCS (`ESC P`).
  */
 // eslint-disable-next-line no-control-regex -- recherche volontaire des séquences d'échappement
-const TERMINAL_REPORT = /\x1b(\[(\d+;\d+R|[?>][\d;]*c|[IO]|M|<)|\]\d+;|P\d)/;
+const TERMINAL_REPORT = /\x1b(\[[?>]?[\d;]*(R|n|\$y|c|M)|\[[IO<M]|\]\d+;|P\d)/;
 /** Lignes conservées dans l'historique de défilement. */
 const SCROLLBACK = 10_000;
 /** Anti-rebond du redimensionnement envoyé au serveur. */

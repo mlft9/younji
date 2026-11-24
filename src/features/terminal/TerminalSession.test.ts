@@ -523,10 +523,22 @@ describe('diffusion de la saisie (SSH-08)', () => {
     // Même juste après une frappe, une réponse reconnue n'est pas diffusée.
     a.type('\x1b[?1;2c');
     a.type('\x1b]11;rgb:0000/0000/0000\x1b\\');
+    a.type('\x1b[?12;40R');
+    a.type('\x1b[0n');
+    a.type('\x1b[?2004;1$y');
+    a.type('\x1b[32;10;5M');
     await vi.waitFor(() => {
-      expect(writesTo(1).join('')).toBe('\x1b[12;40R\x1b[?1;2c\x1b]11;rgb:0000/0000/0000\x1b\\');
+      expect(writesTo(1).join('')).toBe(
+        '\x1b[12;40R\x1b[?1;2c\x1b]11;rgb:0000/0000/0000\x1b\\' +
+          '\x1b[?12;40R\x1b[0n\x1b[?2004;1$y\x1b[32;10;5M',
+      );
     });
     expect(writesTo(2)).toEqual([]);
+    // Les frappes ordinaires (flèches, touches de fonction) restent diffusées.
+    a.type('\x1b[A\x1b[15~');
+    await vi.waitFor(() => {
+      expect(writesTo(2)).toEqual(['\x1b[A\x1b[15~']);
+    });
   });
 
   it('confirme tout collage diffusé et l’encadre selon le mode de chaque cible', async () => {
