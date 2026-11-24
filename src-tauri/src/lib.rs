@@ -157,6 +157,8 @@ pub fn run() {
             commands::book::host_delete,
             commands::book::group_save,
             commands::book::group_delete,
+            commands::snippets::snippet_save,
+            commands::snippets::snippet_delete,
             commands::book::identity_save,
             commands::book::identity_delete,
             commands::book::key_import,

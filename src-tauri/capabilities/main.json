@@ -27,6 +27,8 @@
     "allow-host-delete",
     "allow-group-save",
     "allow-group-delete",
+    "allow-snippet-save",
+    "allow-snippet-delete",
     "allow-identity-save",
     "allow-identity-delete",
     "allow-key-import",

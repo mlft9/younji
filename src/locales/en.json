@@ -272,6 +272,7 @@
       "invalid_username": "Invalid user name (required when no identity is selected).",
       "invalid_tags": "Invalid tags: at most 16, 32 characters each.",
       "invalid_notes": "Invalid notes: at most 4096 characters.",
+      "invalid_snippet": "Invalid snippet: empty, too long (16 KiB at most), with control characters or more than 32 variables.",
       "invalid_secret": "The password is empty or too long.",
       "identity_incomplete": "An identity needs a password, a key, or both.",
       "invalid_auto_lock": "Lock delay not offered.",

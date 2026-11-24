@@ -9,6 +9,7 @@ export const EMPTY_SNAPSHOT: VaultSnapshot = {
   groups: [],
   identities: [],
   keys: [],
+  snippets: [],
   autoLockMinutes: 15,
 };
 

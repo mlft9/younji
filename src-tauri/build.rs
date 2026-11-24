@@ -28,6 +28,8 @@ fn main() {
             "host_delete",
             "group_save",
             "group_delete",
+            "snippet_save",
+            "snippet_delete",
             "identity_save",
             "identity_delete",
             "key_import",

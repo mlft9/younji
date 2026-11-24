@@ -240,6 +240,9 @@ describe('capabilities', () => {
       'allow-sftp-edit-force',
       'allow-local-pick-root',
       'allow-local-list',
+      // Étape 5 : snippets du coffre (SNP-01).
+      'allow-snippet-save',
+      'allow-snippet-delete',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });

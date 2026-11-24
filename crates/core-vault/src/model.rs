@@ -39,6 +39,16 @@ pub const MAX_HOSTS: usize = 10_000;
 pub const MAX_ENTRIES: usize = 1_000;
 /// Taille maximale des clés d'hôte connues (texte `known_hosts`).
 pub const MAX_KNOWN_HOSTS_LEN: usize = 4 * 1024 * 1024;
+/// Nombre maximal de snippets.
+pub const MAX_SNIPPETS: usize = 1_000;
+/// Taille maximale du contenu d'un snippet, en octets.
+pub const MAX_SNIPPET_LEN: usize = 16 * 1024;
+/// Longueur maximale de la description d'un snippet, en caractères.
+pub const MAX_SNIPPET_DESCRIPTION_LEN: usize = 512;
+/// Nombre maximal de variables distinctes `{{nom}}` dans un snippet.
+pub const MAX_SNIPPET_VARIABLES: usize = 32;
+/// Longueur maximale d'un nom de variable.
+pub const MAX_VARIABLE_NAME_LEN: usize = 32;
 /// Délais de verrouillage automatique proposés, en minutes. Pas d'option « jamais ».
 pub const AUTO_LOCK_CHOICES: [u32; 6] = [1, 5, 10, 15, 30, 60];
 /// Délai de verrouillage par défaut, en minutes.
@@ -153,6 +163,35 @@ impl fmt::Debug for StoredKey {
     }
 }
 
+/// Snippet : commande réutilisable, avec des variables `{{nom}}` demandées à l'envoi (SNP-01,
+/// SNP-02). Ce n'est **pas** un secret : il est affiché par l'interface. Il est chiffré au repos
+/// avec le reste du coffre.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Snippet {
+    /// Identifiant.
+    pub id: EntryId,
+    /// Nom affiché.
+    pub name: String,
+    /// Texte envoyé au terminal (une ou plusieurs lignes).
+    pub content: String,
+    /// Description libre.
+    pub description: String,
+}
+
+/// Saisie d'un snippet (création si `id` est `None`).
+#[derive(Debug, Clone)]
+pub struct SnippetInput {
+    /// Snippet à modifier, ou `None` pour en créer un.
+    pub id: Option<EntryId>,
+    /// Nom affiché.
+    pub name: String,
+    /// Contenu.
+    pub content: String,
+    /// Description.
+    pub description: String,
+}
+
 /// Réglages stockés dans le coffre (authentifiés, donc non modifiables hors de l'application).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -181,6 +220,9 @@ pub struct VaultData {
     /// Clés d'hôte acceptées, au format `known_hosts` d'OpenSSH (ADR à l'étape 2).
     known_hosts: String,
     settings: VaultSettings,
+    /// Snippets (étape 5). Absent des coffres créés avant l'étape 5 : liste vide par défaut.
+    #[serde(default)]
+    snippets: Vec<Snippet>,
 }
 
 impl fmt::Debug for VaultData {
@@ -190,6 +232,7 @@ impl fmt::Debug for VaultData {
             .field("groups", &self.groups.len())
             .field("identities", &self.identities.len())
             .field("keys", &self.keys.len())
+            .field("snippets", &self.snippets.len())
             .finish_non_exhaustive()
     }
 }
@@ -204,6 +247,7 @@ impl Default for VaultData {
             keys: Vec::new(),
             known_hosts: String::new(),
             settings: VaultSettings::default(),
+            snippets: Vec::new(),
         }
     }
 }
@@ -331,6 +375,69 @@ fn check_secret(secret: &SecretString) -> Result<(), VaultError> {
     }
 }
 
+/// Vrai pour un nom de variable admis : `[A-Za-z_][A-Za-z0-9_-]{0,31}`.
+pub fn is_variable_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let first_ok = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+    first_ok
+        && name.len() <= MAX_VARIABLE_NAME_LEN
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Noms des variables `{{nom}}` d'un contenu, dans l'ordre de première apparition et sans
+/// doublon. Un motif `{{…}}` dont le nom n'est pas admis reste du texte littéral. Même règle que
+/// `src/features/snippets/variables.ts`.
+pub fn snippet_variables(content: &str) -> Vec<&str> {
+    let mut names: Vec<&str> = Vec::new();
+    let mut rest = content;
+    while let Some(start) = rest.find("{{") {
+        let after = &rest[start + 2..];
+        match after.find("}}") {
+            Some(end) => {
+                let name = &after[..end];
+                if is_variable_name(name) {
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                    rest = &after[end + 2..];
+                } else {
+                    // Pas une variable : on reprend juste après la première accolade.
+                    rest = &rest[start + 1..];
+                }
+            }
+            None => break,
+        }
+    }
+    names
+}
+
+/// Contenu de snippet : 1 octet à 16 Kio, sans caractère de contrôle hors saut de ligne et
+/// tabulation (un `ESC` permettrait de sortir du collage encadré ou de cacher une commande),
+/// 32 variables au plus. Les fins de ligne `\r\n` sont ramenées à `\n`.
+fn clean_snippet_content(content: &str) -> Result<String, VaultError> {
+    let content = content.replace("\r\n", "\n");
+    let bad_control = content
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t');
+    if content.trim().is_empty() || content.len() > MAX_SNIPPET_LEN || bad_control {
+        return Err(VaultError::InvalidSnippet);
+    }
+    if snippet_variables(&content).len() > MAX_SNIPPET_VARIABLES {
+        return Err(VaultError::InvalidSnippet);
+    }
+    Ok(content)
+}
+
+fn check_snippet_description(description: &str) -> Result<(), VaultError> {
+    if description.chars().count() > MAX_SNIPPET_DESCRIPTION_LEN || has_control(description) {
+        Err(VaultError::InvalidNotes)
+    } else {
+        Ok(())
+    }
+}
+
 impl VaultData {
     /// Vérifie un contenu relu du disque : version de schéma et bornes.
     pub(crate) fn check_loaded(&self) -> Result<(), VaultError> {
@@ -342,6 +449,7 @@ impl VaultData {
             || self.identities.len() > MAX_ENTRIES
             || self.keys.len() > MAX_ENTRIES
             || self.known_hosts.len() > MAX_KNOWN_HOSTS_LEN
+            || self.snippets.len() > MAX_SNIPPETS
         {
             return Err(VaultError::InvalidFile);
         }
@@ -625,6 +733,54 @@ impl VaultData {
         Ok(())
     }
 
+    /// Snippets.
+    pub fn snippets(&self) -> &[Snippet] {
+        &self.snippets
+    }
+
+    /// Crée ou modifie un snippet. Renvoie son identifiant.
+    pub fn upsert_snippet(&mut self, input: SnippetInput) -> Result<EntryId, VaultError> {
+        let name = clean_name(&input.name)?;
+        let content = clean_snippet_content(&input.content)?;
+        let description = input.description.trim().to_owned();
+        check_snippet_description(&description)?;
+        let snippet = |id| Snippet {
+            id,
+            name,
+            content,
+            description,
+        };
+        match input.id {
+            Some(id) => {
+                let slot = self
+                    .snippets
+                    .iter_mut()
+                    .find(|s| s.id == id)
+                    .ok_or(VaultError::EntryNotFound)?;
+                *slot = snippet(id);
+                Ok(id)
+            }
+            None => {
+                if self.snippets.len() >= MAX_SNIPPETS {
+                    return Err(VaultError::TooManyEntries);
+                }
+                let id = Uuid::new_v4();
+                self.snippets.push(snippet(id));
+                Ok(id)
+            }
+        }
+    }
+
+    /// Supprime un snippet.
+    pub fn delete_snippet(&mut self, id: EntryId) -> Result<(), VaultError> {
+        let before = self.snippets.len();
+        self.snippets.retain(|s| s.id != id);
+        if self.snippets.len() == before {
+            return Err(VaultError::EntryNotFound);
+        }
+        Ok(())
+    }
+
     /// Change le délai de verrouillage automatique.
     pub fn set_auto_lock(&mut self, minutes: u32) -> Result<(), VaultError> {
         if !AUTO_LOCK_CHOICES.contains(&minutes) {
@@ -888,5 +1044,110 @@ mod tests {
         // Un champ inconnu est refusé (fichier fabriqué ou version future).
         let tampered = json.replacen("\"hosts\"", "\"extra\":1,\"hosts\"", 1);
         assert!(serde_json::from_str::<VaultData>(&tampered).is_err());
+    }
+
+    fn snippet_input(content: &str) -> SnippetInput {
+        SnippetInput {
+            id: None,
+            name: "Redémarrer".into(),
+            content: content.into(),
+            description: String::new(),
+        }
+    }
+
+    #[test]
+    fn snippets_are_created_updated_and_deleted() {
+        let mut data = VaultData::default();
+        let id = data
+            .upsert_snippet(snippet_input("sudo systemctl restart {{service}}"))
+            .unwrap();
+        assert_eq!(data.snippets().len(), 1);
+        let mut edit = snippet_input("ls -la\r\npwd");
+        edit.id = Some(id);
+        edit.description = "  liste  ".into();
+        data.upsert_snippet(edit).unwrap();
+        let snippet = &data.snippets()[0];
+        assert_eq!(snippet.content, "ls -la\npwd");
+        assert_eq!(snippet.description, "liste");
+        let mut unknown = snippet_input("ls");
+        unknown.id = Some(Uuid::new_v4());
+        assert_eq!(data.upsert_snippet(unknown), Err(VaultError::EntryNotFound));
+        data.delete_snippet(id).unwrap();
+        assert_eq!(data.delete_snippet(id), Err(VaultError::EntryNotFound));
+    }
+
+    #[test]
+    fn snippet_content_is_validated() {
+        let mut data = VaultData::default();
+        for bad in [
+            "",
+            "   \n ",
+            "echo \u{1b}[31m",
+            "a\rb",
+            "echo \u{7f}",
+            "echo \u{0}",
+            "echo \u{9b}",
+        ] {
+            assert_eq!(
+                data.upsert_snippet(snippet_input(bad)),
+                Err(VaultError::InvalidSnippet),
+                "{bad:?}"
+            );
+        }
+        let too_long = "a".repeat(MAX_SNIPPET_LEN + 1);
+        assert_eq!(
+            data.upsert_snippet(snippet_input(&too_long)),
+            Err(VaultError::InvalidSnippet)
+        );
+        let many: String = (0..=MAX_SNIPPET_VARIABLES)
+            .map(|i| format!("{{{{v{i}}}}} "))
+            .collect();
+        assert_eq!(
+            data.upsert_snippet(snippet_input(&many)),
+            Err(VaultError::InvalidSnippet)
+        );
+        assert!(data.upsert_snippet(snippet_input("a\tb\nc")).is_ok());
+        let mut bad_desc = snippet_input("ls");
+        bad_desc.description = "a\nb".into();
+        assert_eq!(data.upsert_snippet(bad_desc), Err(VaultError::InvalidNotes));
+        let mut bad_name = snippet_input("ls");
+        bad_name.name = " ".into();
+        assert_eq!(data.upsert_snippet(bad_name), Err(VaultError::InvalidName));
+    }
+
+    #[test]
+    fn snippet_variables_are_extracted() {
+        assert_eq!(
+            snippet_variables("a {{service}} {{ x }} {{_n-1}} {{service}} {{9a}} {{{{b}}"),
+            vec!["service", "_n-1", "b"]
+        );
+        assert_eq!(snippet_variables("{{a}"), Vec::<&str>::new());
+        assert_eq!(snippet_variables("{{}} {{é}}"), Vec::<&str>::new());
+        let long = format!("{{{{{}}}}}", "a".repeat(MAX_VARIABLE_NAME_LEN + 1));
+        assert!(snippet_variables(&long).is_empty());
+        assert!(is_variable_name("A_b-9"));
+        assert!(!is_variable_name("-a"));
+    }
+
+    #[test]
+    fn vault_without_snippets_still_loads() {
+        let mut json = serde_json::to_value(VaultData::default()).unwrap();
+        json.as_object_mut().unwrap().remove("snippets");
+        let data: VaultData = serde_json::from_value(json).unwrap();
+        assert!(data.snippets().is_empty());
+        data.check_loaded().unwrap();
+    }
+
+    #[test]
+    fn too_many_snippets_are_rejected_on_load() {
+        let mut data = VaultData::default();
+        let snippet = Snippet {
+            id: Uuid::new_v4(),
+            name: "x".into(),
+            content: "ls".into(),
+            description: String::new(),
+        };
+        data.snippets = vec![snippet; MAX_SNIPPETS + 1];
+        assert_eq!(data.check_loaded(), Err(VaultError::InvalidFile));
     }
 }

@@ -26,6 +26,7 @@ import type {
   RemoteListing,
   SessionEvent,
   SessionId,
+  SnippetRequest,
   SettingsResponse,
   SftpEvent,
   SftpId,
@@ -222,6 +223,16 @@ export function groupSave(request: { id: EntryId | null; name: string }): Promis
 /** Supprime un groupe (ses hôtes passent « sans groupe »). */
 export function groupDelete(id: EntryId): Promise<void> {
   return call<undefined>('group_delete', { id });
+}
+
+/** Crée ou modifie un snippet (SNP-01). */
+export function snippetSave(request: SnippetRequest): Promise<EntryId> {
+  return call<EntryId>('snippet_save', { request });
+}
+
+/** Supprime un snippet. */
+export function snippetDelete(id: EntryId): Promise<void> {
+  return call<undefined>('snippet_delete', { id });
 }
 
 /** Crée ou modifie une identité (le mot de passe éventuel n'est transmis qu'ici). */

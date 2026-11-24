@@ -272,6 +272,7 @@
       "invalid_username": "Nom d'utilisateur invalide (obligatoire si aucune identité n'est choisie).",
       "invalid_tags": "Étiquettes invalides : 16 au plus, 32 caractères chacune.",
       "invalid_notes": "Notes invalides : 4096 caractères au plus.",
+      "invalid_snippet": "Snippet invalide : contenu vide, trop long (16 Kio au plus), avec des caractères de contrôle ou plus de 32 variables.",
       "invalid_secret": "Le mot de passe est vide ou trop long.",
       "identity_incomplete": "Une identité doit avoir un mot de passe, une clé, ou les deux.",
       "invalid_auto_lock": "Délai de verrouillage non proposé.",
