@@ -139,7 +139,6 @@ export class TerminalSession {
     });
 
     this.terminal.onData((data) => {
-      this.dataEvents += 1;
       this.handleInput(data);
     });
     // Octets bruts (rapports souris X10) : jamais diffusés, ils ne valent que pour ce terminal.
@@ -148,30 +147,12 @@ export class TerminalSession {
     });
     // Saisie de l'utilisateur (clavier, saisie composée) : seule elle peut être diffusée. Les
     // réponses automatiques d'xterm aux requêtes du serveur passent aussi par `onData`.
-    this.terminal.attachCustomKeyEventHandler((event) => {
+    this.terminal.attachCustomKeyEventHandler(() => {
       this.markUserInput();
-      if (event.type === 'keydown') this.dataEventsAtKeyDown = this.dataEvents;
       return true;
     });
     this.host.addEventListener('compositionend', this.markUserInput, { capture: true });
     this.host.addEventListener('input', this.markUserInput, { capture: true });
-    // Repli pour WebKitGTK (version Linux) : une lettre accentuée (é, è sur un clavier AZERTY)
-    // arrive sans code de touche exploitable ; xterm ne la traite ni au `keydown` ni au
-    // `keypress`, et ignore l'événement `input` qui suit. Tous les `input` remontent jusqu'ici,
-    // y compris ceux qu'xterm a traités (il ne les arrête pas) : la seule garde contre un double
-    // envoi est le compteur d'émissions d'`onData`. Voir `handleUnhandledInput`.
-    this.host.addEventListener('compositionstart', () => {
-      this.composing = true;
-    });
-    this.host.addEventListener('compositionend', () => {
-      // L'`input` final d'une composition peut suivre `compositionend` : xterm l'envoie déjà.
-      setTimeout(() => {
-        this.composing = false;
-      }, 0);
-    });
-    this.host.addEventListener('input', (event) => {
-      this.handleUnhandledInput(event);
-    });
     this.terminal.onResize(({ cols, rows }) => {
       this.scheduleRemoteResize(cols, rows);
     });
@@ -277,37 +258,6 @@ export class TerminalSession {
   broadcastTargets(): string[] {
     const { targets } = useBroadcast.getState();
     return targets.length >= 2 && targets.includes(this.tabId) ? targets : [];
-  }
-
-  /** Nombre d'émissions d'`onData` (saisie traitée par xterm). */
-  private dataEvents = 0;
-  /** Valeur de `dataEvents` à la dernière touche enfoncée. */
-  private dataEventsAtKeyDown = 0;
-  /** Saisie composée (méthode de saisie) en cours : gérée par xterm. */
-  private composing = false;
-
-  /**
-   * Repli pour le texte qu'xterm n'a pas traité (voir le constructeur). La décision attend un
-   * tour de boucle : pour une touche de code 229 (méthode de saisie active), xterm envoie le
-   * texte dans un `setTimeout(0)` programmé au `keydown`, qui passe donc avant : `onData` a
-   * alors émis depuis la touche, et rien n'est renvoyé. En cas de doute, le texte n'est pas
-   * envoyé plutôt qu'envoyé deux fois.
-   */
-  private handleUnhandledInput(event: Event): void {
-    if (!(event instanceof InputEvent)) return;
-    const { data } = event;
-    if (event.inputType !== 'insertText' || !data || event.isComposing || this.composing) return;
-    // Uniquement la zone de saisie d'xterm (pas un champ d'un dialogue posé sur le terminal).
-    const textarea = this.terminal.textarea;
-    if (textarea && event.target !== textarea) return;
-    // L'événement `input` suit sa touche : `dataEventsAtKeyDown` est celui de cette touche.
-    const baseline = this.dataEventsAtKeyDown;
-    if (this.dataEvents > baseline) return;
-    setTimeout(() => {
-      if (this.dataEvents > baseline || this.disposed) return;
-      this.markUserInput();
-      this.handleInput(data);
-    }, 0);
   }
 
   /** Instant jusqu'auquel `onData` est attribué à une frappe de l'utilisateur. */
