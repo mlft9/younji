@@ -10,7 +10,13 @@ import { QuickConnectForm } from '@/features/connect/QuickConnectForm';
 import { SftpSidePanel } from '@/features/sftp/SftpSidePanel';
 import { cn } from '@/lib/utils';
 import { useBroadcast } from '@/stores/broadcast';
-import { type ConnectTarget, HOME_TAB_ID, type SessionTab, useSessions } from '@/stores/sessions';
+import {
+  type ConnectTarget,
+  defaultTabTitle,
+  HOME_TAB_ID,
+  type SessionTab,
+  useSessions,
+} from '@/stores/sessions';
 import { useUi } from '@/stores/ui';
 
 import { PaneToolbar } from './PaneToolbar';
@@ -62,30 +68,142 @@ export function TerminalPane({ tab, active, focused, split }: TerminalPaneProps)
         useSessions.getState().focusPane(tab.id);
       }}
     >
-      <div className="relative min-h-0 min-w-0 flex-1">
-        <TerminalView
-          tabId={tab.id}
-          active={active && focused}
-          interactive={tab.status === 'connected'}
-        />
-
-        {broadcasting && (
-          <div className="pointer-events-none absolute top-0 left-0 z-10 rounded-br-md bg-red-600 px-2 py-0.5 text-xs font-bold tracking-wide text-white uppercase">
-            {t('broadcast.paneBadge')}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {(split || broadcasting) && (
+          // En-tête du panneau : quel serveur, et s'il reçoit la diffusion.
+          <div
+            className={cn(
+              'flex h-6 shrink-0 items-center gap-2 truncate px-2 text-xs',
+              broadcasting
+                ? 'bg-red-600 font-semibold text-white'
+                : 'bg-muted text-muted-foreground',
+              focused && !broadcasting && 'text-foreground',
+            )}
+          >
+            {broadcasting && (
+              <span className="font-bold tracking-wide uppercase">{t('broadcast.paneBadge')}</span>
+            )}
+            <span className="truncate">{defaultTabTitle(tab) ?? t('tabs.newSession')}</span>
           </div>
         )}
+        <div className="relative min-h-0 min-w-0 flex-1">
+          <TerminalView
+            tabId={tab.id}
+            active={active && focused}
+            interactive={tab.status === 'connected'}
+          />
 
-        {tab.status === 'connected' && <PaneToolbar tab={tab} split={split} />}
+          {tab.status === 'connected' && <PaneToolbar tab={tab} split={split} />}
 
-        {tab.status === 'form' && fromBook && (
-          <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
-            <div className="flex w-full max-w-md flex-col gap-4 rounded-lg border bg-background p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">
-                {t('session.hostFailedTitle', { host: target?.label ?? target?.host ?? '' })}
-              </h2>
-              <ErrorMessage code={tab.errorCode ?? 'unknown'} />
-              <div className="flex justify-end gap-2">
+          {tab.status === 'form' && fromBook && (
+            <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
+              <div className="flex w-full max-w-md flex-col gap-4 rounded-lg border bg-background p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">
+                  {t('session.hostFailedTitle', { host: target?.label ?? target?.host ?? '' })}
+                </h2>
+                <ErrorMessage code={tab.errorCode ?? 'unknown'} />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      closePane(tab.id);
+                    }}
+                  >
+                    <X aria-hidden="true" />
+                    {t(split ? 'session.closePane' : 'session.closeTab')}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      reconnect(tab, target);
+                    }}
+                  >
+                    <RotateCw aria-hidden="true" />
+                    {t('session.retry')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab.status === 'form' && !fromBook && (
+            <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
+              <QuickConnectForm
+                // Nouvelle instance à chaque retour au formulaire : valeurs pré-remplies à jour.
+                key={`${tab.errorCode ?? ''}-${target?.host ?? ''}`}
+                initial={target}
+                errorCode={tab.errorCode}
+                onSubmit={(next, secrets) => {
+                  void terminalSession(tab.id).connect(next, secrets);
+                }}
+              />
+            </div>
+          )}
+
+          {(tab.status === 'connecting' || tab.status === 'authenticating') && target && (
+            <div
+              role="status"
+              className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-md border bg-background px-4 py-2 text-sm shadow-md"
+            >
+              <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+              {tab.status === 'connecting'
+                ? t('session.connecting', { host: target.host })
+                : t('session.authenticating')}
+            </div>
+          )}
+
+          {tab.status === 'hostKey' && tab.pendingHostKey && target && (
+            <HostKeyDialog
+              host={target.host}
+              port={target.port}
+              hostKey={tab.pendingHostKey}
+              onDecision={(accept) => void terminalSession(tab.id).decideHostKey(accept)}
+            />
+          )}
+
+          {tab.status === 'authPrompt' && tab.pendingPrompt && target && (
+            <AuthPromptDialog
+              // Nouvelle instance à chaque demande : les champs repartent vides.
+              key={JSON.stringify(tab.pendingPrompt)}
+              address={target.port === 22 ? target.host : `${target.host}:${target.port}`}
+              prompt={tab.pendingPrompt}
+              errorCode={tab.errorCode}
+              onSubmit={(answers) => void terminalSession(tab.id).answerPrompt(answers)}
+              onCancel={() => void terminalSession(tab.id).answerPrompt(null)}
+            />
+          )}
+
+          {tab.status === 'blocked' && tab.hostKeyChange && target && (
+            <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
+              <HostKeyChangedAlert
+                host={target.host}
+                port={target.port}
+                change={tab.hostKeyChange}
+                onClose={() => {
+                  closePane(tab.id);
+                }}
+                onManage={() => {
+                  useUi.getState().setActiveSection('keys');
+                  useSessions.getState().activate(HOME_TAB_ID);
+                }}
+              />
+            </div>
+          )}
+
+          {tab.status === 'disconnected' && (
+            <div className="absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3 shadow-lg">
+              <ErrorMessage code={tab.errorCode ?? 'ssh.connection_lost'} />
+              <div className="flex gap-2">
                 <Button
+                  size="sm"
+                  onClick={() => {
+                    reconnect(tab, target);
+                  }}
+                >
+                  <RotateCw aria-hidden="true" />
+                  {t('session.reconnect')}
+                </Button>
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => {
                     closePane(tab.id);
@@ -94,109 +212,10 @@ export function TerminalPane({ tab, active, focused, split }: TerminalPaneProps)
                   <X aria-hidden="true" />
                   {t(split ? 'session.closePane' : 'session.closeTab')}
                 </Button>
-                <Button
-                  onClick={() => {
-                    reconnect(tab, target);
-                  }}
-                >
-                  <RotateCw aria-hidden="true" />
-                  {t('session.retry')}
-                </Button>
               </div>
             </div>
-          </div>
-        )}
-
-        {tab.status === 'form' && !fromBook && (
-          <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
-            <QuickConnectForm
-              // Nouvelle instance à chaque retour au formulaire : valeurs pré-remplies à jour.
-              key={`${tab.errorCode ?? ''}-${target?.host ?? ''}`}
-              initial={target}
-              errorCode={tab.errorCode}
-              onSubmit={(next, secrets) => {
-                void terminalSession(tab.id).connect(next, secrets);
-              }}
-            />
-          </div>
-        )}
-
-        {(tab.status === 'connecting' || tab.status === 'authenticating') && target && (
-          <div
-            role="status"
-            className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-md border bg-background px-4 py-2 text-sm shadow-md"
-          >
-            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-            {tab.status === 'connecting'
-              ? t('session.connecting', { host: target.host })
-              : t('session.authenticating')}
-          </div>
-        )}
-
-        {tab.status === 'hostKey' && tab.pendingHostKey && target && (
-          <HostKeyDialog
-            host={target.host}
-            port={target.port}
-            hostKey={tab.pendingHostKey}
-            onDecision={(accept) => void terminalSession(tab.id).decideHostKey(accept)}
-          />
-        )}
-
-        {tab.status === 'authPrompt' && tab.pendingPrompt && target && (
-          <AuthPromptDialog
-            // Nouvelle instance à chaque demande : les champs repartent vides.
-            key={JSON.stringify(tab.pendingPrompt)}
-            address={target.port === 22 ? target.host : `${target.host}:${target.port}`}
-            prompt={tab.pendingPrompt}
-            errorCode={tab.errorCode}
-            onSubmit={(answers) => void terminalSession(tab.id).answerPrompt(answers)}
-            onCancel={() => void terminalSession(tab.id).answerPrompt(null)}
-          />
-        )}
-
-        {tab.status === 'blocked' && tab.hostKeyChange && target && (
-          <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
-            <HostKeyChangedAlert
-              host={target.host}
-              port={target.port}
-              change={tab.hostKeyChange}
-              onClose={() => {
-                closePane(tab.id);
-              }}
-              onManage={() => {
-                useUi.getState().setActiveSection('keys');
-                useSessions.getState().activate(HOME_TAB_ID);
-              }}
-            />
-          </div>
-        )}
-
-        {tab.status === 'disconnected' && (
-          <div className="absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3 shadow-lg">
-            <ErrorMessage code={tab.errorCode ?? 'ssh.connection_lost'} />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  reconnect(tab, target);
-                }}
-              >
-                <RotateCw aria-hidden="true" />
-                {t('session.reconnect')}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  closePane(tab.id);
-                }}
-              >
-                <X aria-hidden="true" />
-                {t(split ? 'session.closePane' : 'session.closeTab')}
-              </Button>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       {tab.sftpPanelOpen && <SftpSidePanel tab={tab} />}
     </div>
