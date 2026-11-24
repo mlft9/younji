@@ -459,3 +459,64 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Les comptes « SFTP seul » (`ForceCommand internal-sftp`) ne sont probablement pas utilisables proprement, faute de terminal : à vérifier sur le lab (`testsftp`).
 - Fichiers téléchargés en 0600 sous Linux, sans reprendre les droits distants (exécution comprise).
 - Sous Windows, les fichiers téléchargés portent la Mark-of-the-Web (`Zone.Identifier`, `ZoneId=3`) : SmartScreen et le mode protégé d'Office s'appliquent.
+
+## ADR-035 — Panneaux (split) : une session par panneau, arbre de disposition par onglet
+**Statut** : Acceptée (24/11/2026) — prise en autonomie, à relire par le porteur
+**Contexte** : SSH-07 demande un écran partagé horizontal et vertical, redimensionnable. Il faut décider si un panneau partage la connexion de l'onglet ou en ouvre une, comment le nouveau panneau s'authentifie, et comment dessiner les séparateurs.
+**Décision** :
+- **Chaque panneau est une session complète**, avec sa propre connexion SSH, son `TerminalSession`, son état et son panneau SFTP. Aucune nouvelle commande IPC : chaque panneau passe par `ssh_connect` ou `ssh_connect_host` (TOFU strict, 2FA, limite de sessions, fermeture au verrouillage inchangés).
+- **Arbre de disposition par onglet** (`src/features/terminal/layout.ts`, fonctions pures) : feuilles = panneaux, nœuds = séparations `row` / `column` avec un ratio (10 % minimum de chaque côté). Le store `sessions` garde `layouts` (par onglet), `focusedPane` (par onglet) et, pour chaque panneau secondaire, `paneOf` (son onglet). Seul le panneau racine apparaît dans la barre d'onglets.
+- **8 panneaux au plus par onglet** : au-delà, les terminaux deviennent illisibles et chaque panneau ouvre une connexion.
+- **Nouveau panneau** : il reprend la cible du panneau d'origine. Hôte du carnet : connexion directe avec l'identité du coffre, aucun secret dans l'interface. Connexion rapide : formulaire pré-rempli, mot de passe ou passphrase redemandé (comme ADR-021).
+- **Fermeture du panneau racine** : le panneau suivant est promu et devient l'onglet ; les autres panneaux restent ouverts. Fermer un panneau secondaire laisse sa place à son voisin.
+- **Séparateurs écrits à la main** (`SplitView.tsx`) : souris et clavier (Tab puis flèches, Début, Fin), sans dépendance.
+
+**Alternatives écartées** :
+- Plusieurs canaux sur une seule connexion : couplerait la durée de vie des panneaux et ne permettrait pas de viser un autre serveur ; gain faible.
+- `react-resizable-panels` : une dépendance de plus dans la chaîne d'approvisionnement pour quelques dizaines de lignes.
+- Mémoriser le mot de passe d'une connexion rapide pour ouvrir le panneau sans le redemander : contraire à la règle « aucun secret dans l'interface ».
+
+**Conséquences** :
+- Une grille de 4 panneaux ouvre 4 connexions et compte 4 sessions dans la limite du cœur (64).
+- Chaque panneau a sa propre clé d'hôte vérifiée et sa propre 2FA : un hôte « mot de passe + code » demande un code par panneau.
+- La disposition n'est pas persistée : elle disparaît à la fermeture de l'onglet et au verrouillage.
+
+## ADR-036 — Diffusion de la saisie côté interface, cibles explicites
+**Statut** : Acceptée (24/11/2026) — prise en autonomie, à relire par le porteur
+**Contexte** : SSH-08 demande d'envoyer la même saisie à plusieurs sessions, avec un indicateur visuel fort. La menace M7 (`SECURITE.md` §2) est d'envoyer des commandes au mauvais serveur, ou d'oublier le mode actif. Un serveur ne doit pas pouvoir écrire dans les autres sessions par les réponses automatiques du terminal.
+**Décision** :
+- **Entièrement côté interface**, au-dessus de `ssh_write` (store `broadcast`, `TerminalSession.handleInput`) : **aucune nouvelle commande IPC**, donc aucun nouveau privilège. Une interface compromise pouvait déjà écrire dans chaque session. La saisie d'une cible est recopiée dans la file d'entrée (`InputQueue`, ADR-024) de chaque autre cible, qui garde son contrôle de flux.
+- **Cibles cochées explicitement**, dans tous les onglets, après un dialogue qui liste chaque session connectée par **nom et adresse** (`utilisateur@hôte:port`). Seule la session active est cochée d'office. Il faut **au moins 2 cibles**. Rien n'est jamais persisté : la diffusion repart inactive à chaque démarrage.
+- **Arrêt** : une cible déconnectée ou fermée est retirée **définitivement** (une reconnexion, qui peut viser un autre serveur, ne la réintègre pas) ; arrêt automatique sous 2 cibles et au verrouillage ; arrêt manuel en un clic (bandeau) ou par Ctrl+Maj+I. L'activation passe toujours par le dialogue.
+- **Indicateurs** : bandeau rouge en haut de la fenêtre, visible depuis toutes les sections ; bordure rouge épaisse et en-tête « DIFFUSION » sur chaque panneau cible ; pastille sur les onglets concernés.
+- **Collage diffusé toujours confirmé**, même sur une ligne : le dialogue liste les serveurs. Chaque cible reçoit le texte encadré selon **son propre** mode « bracketed paste ».
+- **Seule la saisie de l'utilisateur est diffusée** : des données d'xterm ne sont recopiées que dans les 100 ms qui suivent une frappe, et jamais si elles ressemblent à une réponse automatique (position du curseur, état, modes, identification, focus, souris, chaînes OSC et DCS). Les rapports souris binaires ne sont jamais diffusés. Les envois de snippets et l'intégration au prompt restent dans leur session.
+
+**Alternatives écartées** :
+- Commande IPC de diffusion côté cœur : nouveau privilège sans gain, le cœur ne sait pas mieux que l'interface quelles frappes viennent de l'utilisateur.
+- « Tous les panneaux de l'onglet » par défaut : trop facile de viser un serveur sans le voir.
+- Réintégrer une cible reconnectée : la reconnexion peut aboutir sur un autre serveur ou un autre compte.
+
+**Conséquences et limites** :
+- Maj+F3 produit la même séquence qu'une réponse de position du curseur : il n'est pas diffusé.
+- L'attribution « frappe de l'utilisateur » repose sur une fenêtre de 100 ms : à surveiller avec les méthodes de saisie (IME) et AltGr. Une réponse automatique qui tombe dans cette fenêtre et échappe au filtre serait diffusée.
+
+## ADR-037 — Snippets dans le coffre, variables sans échappement automatique
+**Statut** : Acceptée (24/11/2026) — prise en autonomie, à relire par le porteur. Prolonge ADR-027 et ADR-030 (contenu du coffre).
+**Contexte** : SNP-01 à SNP-03 : bibliothèque de commandes réutilisables, variables `{{nom}}` demandées à l'envoi, envoi vers une ou plusieurs sessions. Un snippet ou une valeur de variable peut contenir des séquences d'échappement qui font sortir du collage encadré, ou des caractères invisibles qui cachent une commande.
+**Décision** :
+- **Stockage dans le coffre** (`core-vault`, `model.rs`), champ `snippets` avec `#[serde(default)]`, **sans changer `SCHEMA_VERSION`** : un coffre sans snippets se lit toujours. Une ancienne version de Younji refuse le fichier (`deny_unknown_fields`) au lieu d'ignorer le champ : pas de perte silencieuse. Deux commandes : `snippet_save`, `snippet_delete` ; la liste arrive avec `vault_snapshot`.
+- **Pas des secrets** : les snippets sont affichés et envoyés en clair au terminal ; le formulaire le rappelle. Ils restent chiffrés au repos.
+- **Contenu validé par le cœur** et revalidé dans l'interface : 1 à 16 Kio, aucun caractère de contrôle hors `\n` et `\t`, aucun caractère invisible (contrôles bidirectionnels, largeur nulle, BOM), 32 variables au plus, noms `[A-Za-z_][A-Za-z0-9_-]{0,31}`, 1 000 snippets au plus. Le contenu est **revérifié au chargement du coffre** (`check_loaded`).
+- **Valeurs des variables** : une seule ligne, sans caractère de contrôle ni invisible. **Aucun échappement shell automatique** : il changerait la commande de façon peu lisible. L'aperçu, obligatoire, montre exactement ce qui part.
+- **Envoi** : « Insérer » par défaut (sans Entrée), « Exécuter » sur clic explicite. Cibles cochées une à une, par nom et adresse. L'envoi **ignore la diffusion** : seules les sessions cochées reçoivent le texte, encadré comme un collage si leur shell l'a demandé.
+
+**Alternatives écartées** :
+- Fichier de snippets séparé, en clair : exposerait des commandes qui révèlent l'infrastructure (noms de services, chemins).
+- Nouvelle version de schéma avec migration : inutile pour un ajout pur.
+- Échappement shell des valeurs : dépend du shell distant (bash, fish, PowerShell) et rend l'aperçu trompeur.
+
+**Conséquences** :
+- Le contenu étant revérifié au chargement, **durcir une règle plus tard** (taille, caractères admis) exigera une migration, ou d'écarter les snippets devenus invalides, pour ne pas rendre un coffre existant illisible.
+- Une valeur de variable peut contenir des métacaractères du shell (`;`, `$( )`) : c'est voulu, l'aperçu les montre.
+- Le champ `snippets` est toujours écrit, même vide : un coffre enregistré une fois par cette version n'est plus lisible par une version antérieure à l'étape 5 (refus propre, sans perte).

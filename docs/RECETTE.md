@@ -1,4 +1,4 @@
-# Recette manuelle — étapes 0 à 4
+# Recette manuelle — étapes 0 à 5
 
 Fiche de test du porteur : ce qu'il faut installer, puis les tests à dérouler, étape par étape.
 Coche au fur et à mesure, note ce qui coince (capture d'écran si possible), puis envoie tes retours avec `/retour`.
@@ -122,7 +122,7 @@ Tout est détaillé dans `docs/ENVIRONNEMENT_DE_TEST.md` §3. En résumé :
 - [ ] Exporter la clé publique dans un fichier `.pub`.
 - [ ] Générer aussi une ECDSA et une RSA 4096 (la RSA peut prendre quelques secondes, l'interface ne doit pas se figer).
 
-### Étape 4 — SFTP (pas encore validée, c'est la priorité)
+### Étape 4 — SFTP
 Connecté en terminal sur `testpwd` :
 - [ ] ⭐ Ouvrir le panneau SFTP (bouton ou Ctrl+Maj+E).
 - [ ] ⭐ Suivi du dossier : si le panneau ne suit pas, cliquer « Activer le suivi » ; la commande est **insérée sans être exécutée**, valide-la avec Entrée. Ensuite `cd /tmp` puis `cd ~/sftp-tests` : le panneau suit.
@@ -140,6 +140,51 @@ Connecté en terminal sur `testpwd` :
 - [ ] 🔒 Fichier téléchargé : Propriétés Windows → mention « Ce fichier provient d'un autre ordinateur » (Mark-of-the-Web).
 - [ ] Compte `testsftp` (SFTP seul, chroot) : la connexion terminal échoue ou se ferme proprement, pas de plantage. *(Limite attendue : le SFTP s'appuie sur une session de terminal ouverte, voir ADR-034.)*
 - [ ] Fermer l'onglet terminal : les onglets SFTP liés se ferment. Verrouiller pendant un transfert : le transfert s'arrête.
+
+### Étape 5 — Split, snippets, diffusion multi-sessions (pas encore validée, c'est la priorité)
+
+> **Préparation sur `younji-deb`** (snapshot `base-propre`) : `sudo systemctl is-active ssh cron` (les deux actifs), puis `sudo rm -f /tmp/diff-*`.
+> **Préparation dans Younji** : trois hôtes du carnet vers `younji-deb` : `testpwd` (mot de passe enregistré), `testkey` (clé du lab), ton compte. Un nouveau panneau ouvert depuis un hôte du carnet se connecte sans rien redemander ; depuis une connexion rapide, le mot de passe est redemandé (normal, ADR-035).
+
+**Écran partagé (SSH-07)**
+- [ ] Ouvrir `testpwd` depuis le carnet, puis Ctrl+Maj+D : un deuxième panneau s'ouvre à droite et se connecte seul. Un seul onglet dans la barre.
+- [ ] ⭐ Ctrl+Maj+O dans chaque panneau jusqu'à une grille 2×2 de 4 terminaux connectés. `tty` dans chacun : quatre valeurs différentes.
+- [ ] ⭐ Ctrl+Alt+← / → / ↑ / ↓ : le focus passe au bon voisin et la frappe arrive dans ce panneau. *Si l'écran pivote (raccourci du pilote Intel), le noter.*
+- [ ] ⭐ Glisser un séparateur à la souris : les panneaux se redimensionnent, `htop` s'adapte.
+- [ ] Tab jusqu'à un séparateur, puis flèches, Début, Fin : il bouge, sans réduire un panneau à zéro.
+- [ ] Le nom du serveur s'affiche en tête de chaque panneau.
+- [ ] Au-delà de 8 panneaux, plus rien ne s'ouvre, sans plantage.
+- [ ] Ctrl+Maj+X ou ✕ ferme un panneau : son voisin prend la place. Fermer le panneau en haut à gauche : l'onglet et les autres panneaux restent.
+- [ ] Ctrl+Maj+W ferme l'onglet entier ; sur la VM, `who` ne montre plus ces sessions.
+- [ ] Coupure réseau (carte de la VM débranchée dans Proxmox) : chaque panneau passe à « déconnecté » et propose de se reconnecter.
+- [ ] Ctrl+Maj+E dans un panneau : le panneau SFTP s'ouvre pour ce panneau.
+
+**Diffusion de la saisie (SSH-08)** — ouvrir trois sessions (`testpwd`, `testkey`, ton compte) plus une 4e sur `testpwd`, qui ne sera pas cochée.
+- [ ] ⭐🔒 Ctrl+Maj+I (ou icône antenne) : le dialogue liste les sessions par nom et adresse, seule la session active est cochée ; avec une seule case cochée, l'activation est refusée.
+- [ ] ⭐ Cocher les 3 et confirmer : bandeau rouge en haut, bordure rouge épaisse et en-tête « DIFFUSION » sur chaque cible, pastille sur les onglets.
+- [ ] ⭐ Dans une cible : `touch /tmp/diff-$(whoami)-$$` + Entrée. Sur la VM, `ls /tmp/diff-*` montre 3 fichiers ; la 4e session n'a rien reçu.
+- [ ] Taper dans la 4e session : la frappe ne va que là.
+- [ ] Ctrl+C, flèches, Tab, `vim` puis `:q` : même réaction dans chaque cible. Longue ligne tapée vite : aucun caractère perdu.
+- [ ] Aller sur l'Accueil ou les Paramètres : le bandeau rouge reste visible.
+- [ ] ⭐ « Arrêter la diffusion » : bandeau et bordures disparaissent en un clic.
+- [ ] Réactiver, puis Ctrl+Maj+I : arrêt immédiat, sans dialogue. *Si les outils de développement s'ouvrent (mode `tauri dev`), le noter.*
+- [ ] 🔒 Collage pendant la diffusion (une seule ligne, `whoami`) : une confirmation apparaît toujours et liste les serveurs.
+- [ ] 🔒 Fermer une cible sur 3 : la diffusion continue vers 2 ; en fermer une autre : elle s'arrête.
+- [ ] 🔒 Déconnecter une cible : elle sort de la diffusion et n'y revient pas après reconnexion.
+- [ ] 🔒 Ctrl+Maj+L pendant la diffusion : après déverrouillage, diffusion inactive, aucun dialogue resté ouvert.
+- [ ] 🔒 (Optionnel) Dans `testpwd`, avant d'activer : `sleep 8; printf '\e[6n'` + Entrée, puis activer la diffusion vers les 3 dans les 8 s sans toucher au clavier. Des caractères parasites peuvent apparaître au plus dans `testpwd`, rien dans les deux autres.
+- [ ] Clavier AZERTY : en diffusion, `@ # { } | \ ~` (AltGr) et `é è à ç` arrivent identiques dans les 3 cibles.
+
+**Snippets (SNP-01 à SNP-03)**
+- [ ] ⭐ Section Snippets, « Nouveau snippet » : `Statut service`, `systemctl status {{service}} --no-pager`. L'interface affiche « Variables demandées à l'envoi : service ».
+- [ ] Modifier, rechercher, supprimer (confirmation demandée).
+- [ ] Verrouiller puis déverrouiller : le snippet est toujours là. 🔒 Ni nom ni commande lisibles dans `vault.younji` (Notepad++).
+- [ ] ⭐ Dans un panneau, Ctrl+Maj+S, choisir le snippet : `service` est demandé avant l'envoi ; avec `ssh`, l'aperçu montre `systemctl status ssh --no-pager`.
+- [ ] « Insérer » : la commande s'affiche sans être exécutée. « Exécuter » : elle est exécutée.
+- [ ] 🔒 Valeur avec un retour à la ligne (coller `ssh` + Entrée + `whoami`) : refusée, envoi bloqué.
+- [ ] SNP-03 : `service` = `cron` vers 2 sessions cochées sur 3 : seules ces deux l'exécutent ; le bouton indique « Exécuter dans 2 sessions ».
+- [ ] Snippet sur deux lignes (`whoami` / `hostname`) : avertissement « plusieurs lignes » ; avec « Insérer », bash n'exécute rien avant Entrée.
+- [ ] Langue EN : sections Snippets, diffusion et infobulles des panneaux en anglais (Ctrl+Shift+…).
 
 ---
 

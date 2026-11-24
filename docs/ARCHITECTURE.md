@@ -1,6 +1,6 @@
 # Architecture
 
-> Reflète le code à la fin de l'étape 4 (SFTP). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
+> Reflète le code à la fin de l'étape 5 (split, snippets, diffusion). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
 
 ## 1. Vue d'ensemble
 
@@ -51,16 +51,18 @@ Traits pleins : en place. Pointillés : à venir.
 
 ## 2. Découpage du code
 
-État actuel (étape 4) :
+État actuel (étape 5) :
 
 ```
 .
 ├── src/                          Interface React
 │   ├── components/
-│   │   ├── layout/               AppShell, Sidebar (avec bouton « Verrouiller »), TabBar (onglets de terminal
-│   │   │                         et SFTP), SectionPlaceholder (Snippets, Tunnels)
+│   │   ├── layout/               AppShell (avec bandeau de diffusion), Sidebar (avec bouton « Verrouiller »),
+│   │   │                         TabBar (onglets de terminal et SFTP, nombre de panneaux, pastille de
+│   │   │                         diffusion), SectionPlaceholder (Tunnels)
 │   │   ├── ui/                   Composants de base (button, avec variante destructive ; input, modal, native-select)
 │   │   ├── ConfirmDialog.tsx     Confirmation générique (bouton rouge pour une action destructrice)
+│   │   ├── SessionChecklist.tsx  Sessions à cocher, avec nom et adresse (diffusion, envoi de snippet)
 │   │   └── NameDialog.tsx        Saisie d'un nom (groupe, clé), longueur bornée comme dans le cœur
 │   ├── features/
 │   │   ├── vault/                Porte du coffre (VaultGate), création avec indicateur de robustesse,
@@ -74,27 +76,42 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── connect/              Connexion rapide (dont le mode « Questions du serveur (2FA) »), dialogue
 │   │   │                         des questions du serveur (AuthPromptDialog), dialogue de clé d'hôte
 │   │   │                         inconnue, alerte de clé modifiée
-│   │   ├── terminal/             Contrôleur xterm.js par onglet (TerminalSession), vue, recherche,
-│   │   │                         menu contextuel, garde de collage, liens, file de saisie, suivi OSC 7
+│   │   ├── terminal/             Contrôleur xterm.js par panneau (TerminalSession, avec diffusion de la
+│   │   │                         saisie et envoi de texte), vue, recherche, menu contextuel, garde de
+│   │   │                         collage, liens, file de saisie, suivi OSC 7 ; panneaux : arbre de
+│   │   │                         disposition (layout.ts), découpe et navigation (split.ts), affichage
+│   │   │                         récursif et séparateurs (SplitView), onglet découpé (SessionPanel),
+│   │   │                         panneau et son en-tête (TerminalPane), barre d'outils (PaneToolbar)
+│   │   ├── broadcast/            Diffusion de la saisie : dialogue de choix des cibles (BroadcastDialog),
+│   │   │                         bandeau rouge global avec arrêt (BroadcastBanner)
+│   │   ├── snippets/             Bibliothèque (SnippetsView, SnippetForm), choix rapide (SnippetPicker),
+│   │   │                         envoi avec variables, aperçu et cibles (SnippetRunDialog), variables
+│   │   │                         et validation (variables.ts, mêmes règles que le cœur), recherche
 │   │   ├── sftp/                 Panneau latéral (SftpSidePanel), onglet double panneau (SftpTabPanel),
 │   │   │                         listes distante et locale (RemoteBrowser, LocalBrowser), file de
 │   │   │                         transferts (TransferList), dialogues de conflit et de chmod,
 │   │   │                         ouverture du client (useSftpClient), OSC 7 et intégration au prompt
 │   │   │                         (osc7.ts), glisser-déposer interne (dnd.ts), section SFTP
-│   │   ├── shortcuts/            Raccourcis clavier (Ctrl+Maj), blocage du rechargement hors terminal
+│   │   ├── shortcuts/            Raccourcis clavier (Ctrl+Maj, Ctrl+Alt+flèches), blocage du rechargement
+│   │   │                         hors terminal
 │   │   └── settings/             Paramètres (apparence, police, sécurité, raccourcis), changement
 │   │                             du mot de passe maître
 │   ├── i18n/                     Initialisation i18next, détection de la langue
 │   ├── locales/{fr,en}.json      Traductions (embarquées, aucun chargement réseau)
 │   ├── stores/
 │   │   ├── vault.ts              État du coffre et contenu affichable (sans secret), vidé au verrouillage
-│   │   ├── sessions.ts           Onglets : terminal ou SFTP (kind, parentTabId), état, cible sans secret,
-│   │   │                         clé d'hôte en attente, dossier OSC 7, panneau SFTP ouvert
+│   │   ├── sessions.ts           Onglets et panneaux : terminal ou SFTP (kind, parentTabId), onglet d'un
+│   │   │                         panneau secondaire (paneOf), disposition par onglet (layouts), panneau
+│   │   │                         actif par onglet (focusedPane), état, cible sans secret, clé d'hôte en
+│   │   │                         attente, dossier OSC 7, panneau SFTP ouvert
+│   │   ├── broadcast.ts          Cibles de la diffusion (jamais persistées), dialogue d'activation
+│   │   ├── snippetRun.ts         Dialogues d'envoi de snippet ouverts (choix, envoi)
 │   │   ├── sftp.ts               Transferts et éditions affichés, alimentés par les événements du cœur
 │   │   ├── settings.ts           Préférences (langue, thème, police), persistées par le cœur (voir §4)
 │   │   └── ui.ts                 Section active de la barre latérale (non persistée)
 │   ├── lib/
 │   │   ├── ipc.ts                Seul point d'appel au backend (fonctions typées)
+│   │   ├── sessionAddress.ts     Adresse affichée d'une session (utilisateur@hôte:port)
 │   │   ├── types.ts              Types partagés (miroir des structures Rust)
 │   │   └── utils.ts              Utilitaire de classes CSS (cn)
 │   ├── test/setup.ts             Initialisation des tests Vitest
@@ -120,6 +137,7 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── commands/vault.rs     Commandes vault_* (cycle de vie du coffre) et lock_everything
 │   │   ├── commands/book.rs      Carnet : vault_snapshot, host_*, group_*, identity_*, key_* (dont
 │   │   │                         key_generate et key_export_public), known_host_*
+│   │   ├── commands/snippets.rs  snippet_save, snippet_delete ; SnippetDto (variables calculées par le cœur)
 │   │   ├── commands/settings.rs  settings_get, settings_set
 │   │   ├── commands/sftp.rs      Commandes sftp_* et local_* : validation, RootPolicy, boîtes de dialogue,
 │   │   │                         Channel d'événements SFTP
@@ -169,8 +187,8 @@ Traits pleins : en place. Pointillés : à venir.
 │           ├── crypto.rs         Argon2id → KEK, enveloppe de la DEK, XChaCha20-Poly1305, aléa du système
 │           ├── store.rs          Vault : création, déverrouillage, sauvegarde atomique + .bak,
 │           │                     changement de mot de passe, permissions
-│           ├── model.rs          Hôtes, groupes, identités, clés, clés d'hôte, réglages ; validation
-│           │                     et intégrité référentielle
+│           ├── model.rs          Hôtes, groupes, identités, clés, clés d'hôte, réglages, snippets ;
+│           │                     validation (revérifiée au chargement) et intégrité référentielle
 │           ├── policy.rs         Politique du mot de passe maître (12 caractères, zxcvbn ≥ 3)
 │           └── error.rs          VaultError et ses codes stables vault.*
 ├── tests/
@@ -184,7 +202,7 @@ Traits pleins : en place. Pointillés : à venir.
 └── rust-toolchain.toml           Toolchain stable + rustfmt + clippy
 ```
 
-À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape ; `core-ssh` s'enrichira des tunnels (étape 6). Côté interface, `features/` accueillera `tunnels/` et `snippets/`.
+À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape ; `core-ssh` s'enrichira des tunnels (étape 6). Côté interface, `features/` accueillera `tunnels/`.
 
 ### Dépendances principales ajoutées à l'étape 1
 | Dépendance | Rôle | Note |
@@ -273,7 +291,7 @@ Coffre :
 | `vault_touch` | aucune (signale une activité) | aucune | `allow-vault-touch` |
 | `vault_watch` | `onEvent: Channel<VaultEventDto>` | aucune | `allow-vault-watch` |
 | `vault_set_auto_lock` | `minutes` (1, 5, 10, 15, 30 ou 60) | aucune | `allow-vault-set-auto-lock` |
-| `vault_snapshot` | aucune | `{ hosts[], groups[], identities[], keys[], autoLockMinutes }` (voir ci-dessous) | `allow-vault-snapshot` |
+| `vault_snapshot` | aucune | `{ hosts[], groups[], identities[], keys[], snippets[], autoLockMinutes }` (voir ci-dessous) | `allow-vault-snapshot` |
 
 Carnet, clés et paramètres :
 
@@ -291,6 +309,8 @@ Carnet, clés et paramètres :
 | `key_deploy` | `request { hostId, keyId, password \| null }` (mot de passe seulement si l'hôte n'a pas d'identité), `onEvent: Channel<SessionEventDto>` | `SessionId` (même pilotage qu'une session : clé d'hôte, questions, fermeture) | `allow-key-deploy` |
 | `key_rename` | `id`, `name` | aucune | `allow-key-rename` |
 | `key_delete` | `id` (refusé si une identité l'utilise) | aucune | `allow-key-delete` |
+| `snippet_save` | `request { id \| null, name, content, description }` (validé par `core-vault`, ADR-037) | `EntryId` | `allow-snippet-save` |
+| `snippet_delete` | `id` | aucune | `allow-snippet-delete` |
 | `known_host_list` | aucune | `[{ line, hosts, algorithm, fingerprint, revoked }]` | `allow-known-host-list` |
 | `known_host_delete` | `entry` (une entrée telle que reçue de `known_host_list`) | nombre de lignes retirées (0 ou 1) | `allow-known-host-delete` |
 | `settings_get` | aucune (lisible avant le déverrouillage) | `{ settings { language, theme, terminalFontSize }, firstRun }` | `allow-settings-get` |
@@ -324,6 +344,7 @@ Aucune commande n'accepte de politique de conflit : tout transfert démarre en �
 - `auth` vaut `{ kind: "password", password }`, `{ kind: "key", keyFileId, passphrase | null }` ou `{ kind: "interactive" }` (aucun secret d'avance : le serveur pose ses questions, ADR-031) ;
 - le `password` d'une identité vaut `{ action: "keep" }`, `{ action: "clear" }` ou `{ action: "set", value }` ;
 - une identité renvoyée par `vault_snapshot` est `{ id, name, username, hasPassword, keyId }` : la présence d'un mot de passe, jamais sa valeur ;
+- un snippet est renvoyé comme `{ id, name, content, description, variables[] }` : ce n'est pas un secret (ADR-037), et ses variables sont calculées par le cœur ;
 - une clé, importée ou générée, est renvoyée avec sa seule partie publique (sans commentaire) et son empreinte ; un hôte avec ses champs descriptifs. Aucune commande n'exporte une clé privée (ADR-032).
 
 **Validation** : les structures Rust refusent les champs inconnus (`deny_unknown_fields`) ; un `EntryId` doit être un UUID ; adresse, port et utilisateur d'un hôte passent par les mêmes règles que la connexion SSH ; noms, étiquettes, notes et nombres d'entrées sont bornés dans `core-vault` (`model.rs`). Toute commande du carnet sur un coffre verrouillé renvoie `vault.locked`.
@@ -565,7 +586,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 
 | Fichier | Contenu | Protection | Disponible |
 |---|---|---|---|
-| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage ; plus tard snippets et tunnels | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
+| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037) ; plus tard tunnels | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
 | `vault.younji.bak` | Version précédente du coffre | Chiffré. Copié de façon atomique avant chaque remplacement ; recopié depuis le nouveau fichier après un changement de mot de passe, ou supprimé si la copie échoue | Oui (étape 2) |
 | `edits/` (dans `app_local_data_dir`) | Copies temporaires des fichiers distants ouverts en édition (`younji-edit-*`) | Dossier 0700, fichier 0600 sous Linux. Supprimées à la fin de l'édition, de la session et au verrouillage ; copies abandonnées depuis plus de 24 h supprimées au démarrage | Oui (étape 4) |
 | `settings.json` | Langue, thème, taille de police du terminal | En clair, **aucune donnée sensible** (il doit être lisible avant le déverrouillage). Écriture atomique ; lecture limitée à 64 Kio ; chaque valeur relue est validée, une valeur inattendue reprend sa valeur par défaut | Oui (étape 2) |
@@ -588,30 +609,32 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 1. Les crates renvoient des erreurs `thiserror` précises. `SshError` (`core-ssh`) et `VaultError` (`core-vault`) ne transportent aucune donnée : ni secret, ni entrée utilisateur, ni texte du serveur.
 2. `src-tauri` les convertit en `AppError { code }`. Seul le code est sérialisé. Un test Rust vérifie que chaque code a sa traduction FR et EN.
    - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`. Ajoutés à l'étape 3 : `auth_prompt_invalid`, `auth_prompt_timeout`, `auth_cancelled`, `no_pending_prompt`, `invalid_answers`, `key_generation_failed`, `invalid_public_key`, `deploy_failed`. Ajoutés à l'étape 4 : `sftp_unavailable`, `sftp_failed`, `sftp_not_found`, `sftp_permission_denied`, `sftp_already_exists`, `sftp_not_directory`, `sftp_invalid_path`, `sftp_not_file`, `sftp_invalid_mode`, `sftp_unsafe_name`, `sftp_too_many_entries`, `local_io`, `local_outside_root`, `local_root_forbidden`, `transfer_cancelled`, `transfer_not_found`, `edit_too_large`, `edit_conflict`. Le texte d'état renvoyé par le serveur SFTP n'est jamais recopié : il est traduit en code.
-   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
+   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
    - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal` ; depuis l'étape 4 : `sftp.not_found`, `sftp.too_many`, `sftp.edit_not_found`, `sftp.too_many_edits`, `local.root_unknown`, `editor.open_failed`.
 3. `src/lib/ipc.ts` normalise toute erreur reçue en `{ code }` ; un message brut n'est jamais propagé, et une erreur de forme inattendue devient `unknown`.
 4. L'interface affiche `t('errors.<code>')`. Le détail technique part dans les journaux, **sans secret**.
 
 ## 6. Interface
 - **Porte du coffre** (`features/vault/`) : au premier lancement, création du coffre (mot de passe et confirmation, indicateur de robustesse en direct, avertissement « aucune récupération possible ») ; ensuite, écran de déverrouillage, avec la cause du dernier verrouillage. Rien d'autre n'est affiché tant que le coffre est verrouillé.
-- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie ; Snippets et Tunnels affichent encore un emplacement réservé.
+- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie ; Tunnels affiche encore un emplacement réservé.
 - **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`).
 - **Clés** (`features/keys/`, KEY-01 à KEY-03, HST-03, HKY-04) : clés générées dans le coffre (`KeyGenerateDialog`, Ed25519 par défaut) ou importées (boîte de dialogue du système) ; renommage, copie et export `.pub` de la clé publique, déploiement sur un hôte du carnet (`KeyDeployDialog`, qui reprend les dialogues de clé d'hôte et de questions du serveur), suppression ; identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
 - **Onglets de session** (`stores/sessions.ts`, `TabBar`) : deux sortes d'onglets, `kind: 'terminal'` et `kind: 'sftp'` (voir SFTP ci-dessous). Ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` (↔ `authPrompt`) → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. En `authPrompt`, l'onglet affiche `AuthPromptDialog` : hôte qui pose les questions, texte du serveur encadré comme « Message envoyé par le serveur », rappel que Younji ne demande jamais le mot de passe maître ici ; réponses masquées sauf si le serveur autorise l'écho, champs vidés dès l'envoi. Le store garde la demande en attente, jamais les réponses. La connexion rapide propose un troisième mode, « Questions du serveur (2FA) », sans aucun secret saisi d'avance. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.
-- **Terminal** (`features/terminal/`) : un contrôleur `TerminalSession` par onglet, hors de React, qui garde l'instance xterm.js, son tampon (10 000 lignes) et sa session quand l'onglet est masqué. Taille de police réglable, appliquée à chaud. Addons fit (avec `ResizeObserver` et anti-rebond de 100 ms vers `ssh_resize`), search, web-links, unicode11 et WebGL (repli sur le rendu DOM si WebGL est indisponible). Au verrouillage, tous les contrôleurs sont détruits.
+- **Terminal** (`features/terminal/`) : un contrôleur `TerminalSession` par panneau, hors de React, qui garde l'instance xterm.js, son tampon (10 000 lignes) et sa session quand l'onglet est masqué. Taille de police réglable, appliquée à chaud. Addons fit (avec `ResizeObserver` et anti-rebond de 100 ms vers `ssh_resize`), search, web-links, unicode11 et WebGL (repli sur le rendu DOM si WebGL est indisponible). Au verrouillage, tous les contrôleurs sont détruits.
 - **Protections du terminal** : pas d'addon presse-papiers, donc les séquences OSC 52 restent sans effet ; garde de collage (`paste.ts`) qui retire les marqueurs de « bracketed paste » et demande confirmation, avec aperçu, pour un texte multiligne ou contenant des caractères de contrôle ; liens `http(s)` ouverts au Ctrl+clic, avec confirmation de l'adresse réelle pour les liens OSC 8 (`links.ts`, ADR-022).
+- **Panneaux** (SSH-07, ADR-035) : un onglet de terminal se découpe à droite (Ctrl+Maj+D) ou en bas (Ctrl+Maj+O), 8 panneaux au plus. Chaque panneau est une session à part (sa connexion, son `TerminalSession`, son panneau SFTP), rangée dans `tabs` avec `paneOf` = onglet qui l'affiche ; seul le panneau racine apparaît dans la barre d'onglets. `layouts[onglet]` garde l'arbre de disposition (`layout.ts` : feuilles = panneaux, nœuds `row` / `column` avec un ratio), `focusedPane[onglet]` le panneau actif. Un nouveau panneau reprend la cible du panneau d'origine (`split.ts`) : connexion directe pour un hôte du carnet, formulaire pré-rempli pour une connexion rapide. `SplitView` dessine l'arbre ; ses séparateurs se déplacent à la souris ou au clavier. Navigation par Ctrl+Alt+flèches, fermeture d'un panneau par Ctrl+Maj+X (le voisin prend la place ; si c'est le panneau racine, le suivant est promu onglet). Chaque panneau affiche en tête le nom de son serveur, et une barre d'outils (`PaneToolbar`) : découpe, snippets, diffusion, SFTP, fermeture.
+- **Diffusion de la saisie** (`features/broadcast/`, store `broadcast`, SSH-08, ADR-036) : activée par Ctrl+Maj+I ou la barre d'outils, après le dialogue `BroadcastDialog` (sessions connectées de tous les onglets, cochées une à une, nom et adresse, 2 au moins). `TerminalSession.handleInput` recopie la saisie d'une cible dans la file d'entrée de chaque cible ; les réponses automatiques d'xterm et les rapports souris binaires restent dans leur session. Un collage diffusé passe toujours par la confirmation. Indicateurs : `BroadcastBanner` en haut de la fenêtre, bordure rouge et en-tête « DIFFUSION » sur les cibles, pastille dans `TabBar`. Arrêt : bouton, Ctrl+Maj+I, verrouillage, moins de 2 cibles (une cible déconnectée est retirée).
+- **Snippets** (`features/snippets/`, SNP-01 à SNP-03, ADR-037) : section Snippets (liste, recherche, création, modification, suppression) ; la liste vient de `vault_snapshot`, l'enregistrement passe par `snippet_save` / `snippet_delete`. Ctrl+Maj+S ou la barre d'outils d'un panneau ouvre `SnippetPicker`, puis `SnippetRunDialog` : valeurs des variables (une ligne, validées), aperçu du texte final, sessions cochées, « Insérer » ou « Exécuter ». L'envoi passe par `TerminalSession.sendText`, vers les seules sessions cochées, sans diffusion. Les dialogues sont pilotés par le store `snippetRun`.
 - **SFTP** (`features/sftp/`, SFTP-01 à SFTP-05, ADR-034) :
   - **Panneau latéral** à droite du terminal, ouvert par un bouton ou Ctrl+Maj+E quand la session est connectée. Il **suit le dossier du shell** grâce à la séquence OSC 7 (`registerOscHandler(7)`, chemin décodé strictement par `osc7.ts` et rangé dans `remoteCwd`). Si le shell n'envoie pas OSC 7, le bouton « Activer le suivi » insère dans le terminal une intégration au prompt constante (bash, zsh), comme un collage et sans Entrée : l'utilisateur la relit et la valide.
   - **Onglet double panneau** (`SftpTabPanel`, `kind: 'sftp'`, `parentTabId` = onglet de terminal) : dossier local à gauche (`LocalBrowser`, dans une racine choisie par `local_pick_root`, navigation seule), serveur à droite (`RemoteBrowser`), glisser-déposer interne entre les deux (types MIME propres à Younji, `dnd.ts`). Il utilise la connexion de son terminal : il se ferme avec lui et affiche un message si la session se termine. La section SFTP de la barre latérale liste les sessions connectées pour ouvrir l'un ou l'autre.
   - **Opérations distantes** : navigation, dossier parent et personnel, création de dossier, renommage, suppression (confirmation ; récursive pour un dossier, liens supprimés sans être suivis), chmod (cases ou valeur octale), téléchargement, envoi de fichiers ou d'un dossier, ouverture dans l'éditeur. Les noms suspects (caractères invisibles, réservés) sont signalés.
   - **File de transferts** (`TransferList`, store `useSftp`) : progression, annulation, bilan (copiés, ignorés, liens non copiés, noms refusés, échecs) ; dialogue de conflit (écraser, ignorer, garder les deux, « appliquer aux suivants ») ; état des éditions (renvoyé, conflit avec renvoi forcé, arrêt). Le store est vidé au verrouillage.
-- **Raccourcis** (`features/shortcuts/`) : tous en Ctrl+Maj (ou Ctrl+Tab, Ctrl+PgPréc/PgSuiv) pour laisser au shell ses propres raccourcis, dont Ctrl+Maj+L pour verrouiller et Ctrl+Maj+E pour le panneau SFTP ; liste affichée dans les Paramètres. Hors du terminal, F5 et Ctrl+R sont bloqués, car un rechargement verrouille le coffre et ferme toutes les sessions.
+- **Raccourcis** (`features/shortcuts/`) : tous en Ctrl+Maj (ou Ctrl+Tab, Ctrl+PgPréc/PgSuiv, Ctrl+Alt+flèches) pour laisser au shell ses propres raccourcis, dont Ctrl+Maj+L pour verrouiller, Ctrl+Maj+E pour le panneau SFTP, Ctrl+Maj+D / Ctrl+Maj+O pour découper à droite / en bas, Ctrl+Maj+X pour fermer un panneau, Ctrl+Alt+flèches pour passer au panneau voisin, Ctrl+Maj+S pour envoyer un snippet et Ctrl+Maj+I pour activer ou arrêter la diffusion ; liste affichée dans les Paramètres. Hors du terminal, F5 et Ctrl+R sont bloqués, car un rechargement verrouille le coffre et ferme toutes les sessions.
 - **Paramètres** (APP-05, VLT-03, VLT-04) : langue (système, français, anglais), thème (système, clair, sombre) et taille de police du terminal (8 à 32), appliqués à chaud et enregistrés dans `settings.json` ; délai de verrouillage automatique (1, 5, 10, 15, 30 ou 60 min, enregistré dans le coffre) ; changement du mot de passe maître ; raccourcis clavier ; nom et version via `app_info`.
 - **Langue** : en mode « système », détectée depuis `navigator.languages` (première langue prise en charge), repli sur l'anglais. Fixée avant le premier rendu pour éviter un affichage dans la mauvaise langue.
 - **Thème** : en mode « système », suit `prefers-color-scheme` à chaud ; classe `light` / `dark` sur `<html>`.
-- Stores zustand : `useSettings`, `useUi`, `useSessions`, `useSftp` (transferts et éditions affichés) et `useVault` (état du coffre et contenu affichable, sans secret, vidé dès le verrouillage).
-- À venir : écran partagé (étape 5).
+- Stores zustand : `useSettings`, `useUi`, `useSessions` (onglets et panneaux), `useBroadcast` (cibles de la diffusion), `useSnippetRun` (dialogues d'envoi de snippet), `useSftp` (transferts et éditions affichés) et `useVault` (état du coffre et contenu affichable, sans secret, vidé dès le verrouillage).
 
 ## 7. Outillage et CI/CD
 
