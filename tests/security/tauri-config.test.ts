@@ -243,6 +243,11 @@ describe('capabilities', () => {
       // Étape 5 : snippets du coffre (SNP-01).
       'allow-snippet-save',
       'allow-snippet-delete',
+      // Étape 6 : tunnels du coffre (TUN-01 à TUN-03). Arrêt, clé d'hôte et 2FA réutilisent
+      // les commandes des sessions (`ssh_close`, `ssh_host_key_decision`, `ssh_auth_answer`).
+      'allow-tunnel-save',
+      'allow-tunnel-delete',
+      'allow-tunnel-start',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });

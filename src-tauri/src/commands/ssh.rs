@@ -167,11 +167,11 @@ impl SessionEventDto {
 
 /// Relie une session `core-ssh` aux `Channel` de l'interface. Un déploiement n'a pas de
 /// terminal : sa sortie (bannière) est ignorée.
-struct ChannelSink {
-    events: Channel<SessionEventDto>,
-    output: Option<Channel<InvokeResponseBody>>,
-    remover: SessionRemover,
-    host_pattern: String,
+pub(crate) struct ChannelSink {
+    pub(crate) events: Channel<SessionEventDto>,
+    pub(crate) output: Option<Channel<InvokeResponseBody>>,
+    pub(crate) remover: SessionRemover,
+    pub(crate) host_pattern: String,
 }
 
 impl SessionSink for ChannelSink {
@@ -291,7 +291,7 @@ fn spawn_session(
 /// Un verrouillage a pu survenir pendant la préparation (lecture de la clé, du coffre) : le
 /// coffre est verrouillé avant la fermeture des sessions, donc une session enregistrée après
 /// cette fermeture le voit ici et est fermée aussitôt (ADR-026).
-fn close_if_locked(
+pub(crate) fn close_if_locked(
     id: SessionId,
     state: &SessionManager,
     vault: &VaultState,
@@ -324,7 +324,7 @@ fn host_credentials(data: &VaultData, host_id: EntryId) -> Result<(Target, Crede
 }
 
 /// Cible d'un hôte du carnet et, s'il en a une, les identifiants de son identité.
-fn host_target(
+pub(crate) fn host_target(
     data: &VaultData,
     host_id: EntryId,
 ) -> Result<(Target, Option<Credentials>), AppError> {

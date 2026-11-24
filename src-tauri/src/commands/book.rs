@@ -17,6 +17,7 @@ use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::snippets::SnippetDto;
+use crate::commands::tunnels::TunnelDto;
 use crate::error::AppError;
 use crate::state::{KeyFileId, SessionManager};
 use crate::vault_state::VaultState;
@@ -126,6 +127,7 @@ pub struct SnapshotDto {
     identities: Vec<IdentityDto>,
     keys: Vec<KeyDto>,
     snippets: Vec<SnippetDto>,
+    tunnels: Vec<TunnelDto>,
     auto_lock_minutes: u32,
 }
 
@@ -137,6 +139,7 @@ impl From<&VaultData> for SnapshotDto {
             identities: data.identities().iter().map(Into::into).collect(),
             keys: data.keys().iter().map(Into::into).collect(),
             snippets: data.snippets().iter().map(Into::into).collect(),
+            tunnels: data.tunnels().iter().map(Into::into).collect(),
             auto_lock_minutes: data.settings().auto_lock_minutes,
         }
     }
