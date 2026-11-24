@@ -25,6 +25,7 @@ import {
   toAppError,
 } from '@/lib/ipc';
 import type { AuthRequest, SessionEvent, SessionId } from '@/lib/types';
+import { useBroadcast } from '@/stores/broadcast';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useSettings } from '@/stores/settings';
 
@@ -35,6 +36,9 @@ import { isOpenableUrl, isOpenGesture } from './links';
 import { analyzePaste, type PasteAnalysis } from './paste';
 import { TERMINAL_FONT_FAMILY, terminalTheme } from './terminalTheme';
 
+/** Caractères refusés dans un texte envoyé par `sendText` (contrôles hors `\t` et `\n`). */
+// eslint-disable-next-line no-control-regex -- recherche volontaire des caractères de contrôle
+const UNSAFE_TEXT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
 /** Lignes conservées dans l'historique de défilement. */
 const SCROLLBACK = 10_000;
 /** Anti-rebond du redimensionnement envoyé au serveur. */
@@ -124,10 +128,10 @@ export class TerminalSession {
     });
 
     this.terminal.onData((data) => {
-      this.input?.push(data);
+      this.handleInput(data, false);
     });
     this.terminal.onBinary((data) => {
-      this.input?.push(data, true);
+      this.handleInput(data, true);
     });
     this.terminal.onResize(({ cols, rows }) => {
       this.scheduleRemoteResize(cols, rows);
@@ -212,6 +216,48 @@ export class TerminalSession {
         void sshResize(this.sessionId, cols, rows).catch(() => undefined);
       }
     }, RESIZE_DEBOUNCE_MS);
+  }
+
+  // ------------------------------------------------------------------ saisie
+
+  /**
+   * Saisie tapée (ou collée) dans ce terminal. En diffusion (SSH-08), si ce terminal est une
+   * cible, elle est recopiée dans la file d'entrée de **chaque** cible connectée, qui garde son
+   * propre contrôle de flux. Un terminal qui n'est pas une cible n'envoie qu'à sa session.
+   */
+  private handleInput(data: string, binary: boolean): void {
+    const { targets } = useBroadcast.getState();
+    if (targets.length >= 2 && targets.includes(this.tabId)) {
+      for (const id of targets) registry.get(id)?.pushInput(data, binary);
+    } else {
+      this.pushInput(data, binary);
+    }
+  }
+
+  /** Envoie des octets à la session, sans diffusion. Renvoie `false` sans session ouverte. */
+  private pushInput(data: string, binary: boolean): boolean {
+    if (this.sessionId === null || !this.input) return false;
+    this.input.push(data, binary);
+    return true;
+  }
+
+  /** Vrai si la session est ouverte (terminal utilisable). */
+  isConnected(): boolean {
+    return this.sessionId !== null && this.input !== null;
+  }
+
+  /**
+   * Envoie un texte déjà validé (snippet, SNP-03) à cette seule session, sans passer par la
+   * diffusion. Le texte est encadré comme un collage si le programme distant l'a demandé ;
+   * `execute` ajoute Entrée. Renvoie `false` si la session n'est pas ouverte.
+   */
+  sendText(text: string, execute: boolean): boolean {
+    // Défense en profondeur : aucun caractère de contrôle hors saut de ligne et tabulation (un
+    // ESC ferait sortir du collage encadré).
+    if (UNSAFE_TEXT.test(text)) return false;
+    const body = text.replace(/\r?\n/g, '\r');
+    const framed = this.terminal.modes.bracketedPasteMode ? `\x1b[200~${body}\x1b[201~` : body;
+    return this.pushInput(execute ? `${framed}\r` : framed, false);
   }
 
   // ------------------------------------------------------------------ session
@@ -381,6 +427,8 @@ export class TerminalSession {
   }
 
   private handleDisconnected(code: string): void {
+    // Une session terminée quitte la diffusion pour de bon : une reconnexion ne la réintègre pas.
+    useBroadcast.getState().removeTarget(this.tabId);
     this.sessionId = null;
     this.update({ sessionId: null });
     this.input?.close();
@@ -418,6 +466,7 @@ export class TerminalSession {
   }
 
   private closeRemote(): void {
+    useBroadcast.getState().removeTarget(this.tabId);
     this.input?.close();
     this.input = null;
     if (this.sessionId !== null) {
@@ -520,24 +569,36 @@ export function existingTerminalSession(tabId: string): TerminalSession | undefi
 }
 
 /**
- * Ferme la session de l'onglet, libère son terminal et retire l'onglet. Les onglets SFTP qui
- * utilisent sa connexion sont fermés avec lui.
+ * Ferme la session d'un panneau (ou d'un onglet non découpé), libère son terminal et le retire.
+ * Les onglets SFTP qui utilisent sa connexion sont fermés avec lui.
+ */
+export function closePane(paneId: string): void {
+  for (const child of useSessions.getState().tabs.filter((t) => t.parentTabId === paneId)) {
+    closePane(child.id);
+  }
+  registry.get(paneId)?.dispose();
+  registry.delete(paneId);
+  useSessions.getState().removeTab(paneId);
+}
+
+/**
+ * Ferme un onglet entier : tous ses panneaux (SSH-07) et les onglets SFTP qui utilisent leurs
+ * connexions. Pour un panneau secondaire, ne ferme que ce panneau.
  */
 export function closeTab(tabId: string): void {
-  for (const child of useSessions.getState().tabs.filter((t) => t.parentTabId === tabId)) {
-    closeTab(child.id);
+  for (const pane of useSessions.getState().tabs.filter((t) => t.paneOf === tabId)) {
+    closePane(pane.id);
   }
-  registry.get(tabId)?.dispose();
-  registry.delete(tabId);
-  useSessions.getState().removeTab(tabId);
+  closePane(tabId);
 }
 
 /**
  * Ferme tous les onglets de session et détruit leurs terminaux, tampon de défilement compris
- * (verrouillage du coffre, ADR-026).
+ * (verrouillage du coffre, ADR-026). La diffusion s'arrête.
  */
 export function closeAllTabs(): void {
-  for (const tab of useSessions.getState().tabs) closeTab(tab.id);
+  useBroadcast.getState().stop();
+  for (const tab of useSessions.getState().tabs) closePane(tab.id);
   for (const [tabId, session] of registry) {
     session.dispose();
     registry.delete(tabId);

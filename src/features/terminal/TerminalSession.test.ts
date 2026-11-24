@@ -1,18 +1,28 @@
 import * as ipc from '@/lib/ipc';
 import type * as IpcModule from '@/lib/ipc';
 import type { SessionEvent } from '@/lib/types';
+import { useBroadcast } from '@/stores/broadcast';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useSettings } from '@/stores/settings';
 
 import { SHELL_INTEGRATION } from '@/features/sftp/osc7';
 
-import { closeAllTabs, closeTab, terminalSession, TerminalSession } from './TerminalSession';
+import {
+  closeAllTabs,
+  closePane,
+  closeTab,
+  existingTerminalSession,
+  terminalSession,
+  TerminalSession,
+} from './TerminalSession';
 
 /** Accès au double de xterm, dont les méthodes sont des fonctions simulées. */
 function fake(session: TerminalSession) {
   return session.terminal as unknown as {
     paste: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
+    onData: ReturnType<typeof vi.fn>;
+    modes: { bracketedPasteMode: boolean };
     written: Uint8Array[];
     osc: Map<number, (data: string) => boolean>;
   };
@@ -25,6 +35,7 @@ vi.mock('@xterm/xterm', () => {
     rows = 24;
     options: Record<string, unknown> = {};
     unicode = { activeVersion: '' };
+    modes = { bracketedPasteMode: false };
     written: Uint8Array[] = [];
     paste = vi.fn();
     focus = vi.fn();
@@ -389,5 +400,161 @@ describe('TerminalSession', () => {
     expect(child).not.toBeNull();
     closeTab(tabId);
     expect(useSessions.getState().tabs).toEqual([]);
+  });
+});
+
+/** Ouvre une session connectée **enregistrée** dans le registre (diffusion, snippets). */
+async function registered(sessionId: number, tabId = useSessions.getState().openTab()) {
+  const session = terminalSession(tabId);
+  let listeners: Listeners | undefined;
+  vi.mocked(ipc.sshConnect).mockImplementationOnce((_request, l) => {
+    listeners = l;
+    return Promise.resolve(sessionId);
+  });
+  await session.connect(TARGET, { password: 'x' });
+  listeners?.onEvent({ type: 'connected' });
+  /** Simule une frappe dans ce terminal. */
+  const type = (data: string) => {
+    const handler = fake(session).onData.mock.calls[0]?.[0] as (d: string) => void;
+    handler(data);
+  };
+  const disconnect = () => {
+    listeners?.onEvent({ type: 'disconnected', code: 'ssh.connection_lost' });
+  };
+  return { session, tabId, type, disconnect };
+}
+
+/** Données envoyées à une session du cœur. */
+function writesTo(sessionId: number): string[] {
+  return vi
+    .mocked(ipc.sshWrite)
+    .mock.calls.filter((call) => call[0] === sessionId)
+    .map((call) => call[1]);
+}
+
+describe('diffusion de la saisie (SSH-08)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    closeAllTabs();
+    useSessions.setState({ tabs: [], activeTabId: HOME_TAB_ID, layouts: {}, focusedPane: {} });
+  });
+
+  it('recopie la frappe d’une cible vers toutes les cibles, pas vers les autres sessions', async () => {
+    const a = await registered(1);
+    const b = await registered(2);
+    const c = await registered(3);
+    const outside = await registered(4);
+    useBroadcast.getState().start([a.tabId, b.tabId, c.tabId]);
+
+    a.type('ls\r');
+    await vi.waitFor(() => {
+      expect(writesTo(3)).toEqual(['ls\r']);
+    });
+    expect(writesTo(1)).toEqual(['ls\r']);
+    expect(writesTo(2)).toEqual(['ls\r']);
+    expect(writesTo(4)).toEqual([]);
+
+    // Une session hors diffusion n'envoie qu'à elle-même.
+    outside.type('pwd\r');
+    await vi.waitFor(() => {
+      expect(writesTo(4)).toEqual(['pwd\r']);
+    });
+    expect(writesTo(1)).toEqual(['ls\r']);
+  });
+
+  it('retire une cible déconnectée et s’arrête sous deux cibles', async () => {
+    const a = await registered(1);
+    const b = await registered(2);
+    const c = await registered(3);
+    useBroadcast.getState().start([a.tabId, b.tabId, c.tabId]);
+    c.disconnect();
+    expect(useBroadcast.getState().targets).toEqual([a.tabId, b.tabId]);
+    b.disconnect();
+    expect(useBroadcast.getState().targets).toEqual([]);
+    a.type('x');
+    await vi.waitFor(() => {
+      expect(writesTo(1)).toEqual(['x']);
+    });
+  });
+
+  it('s’arrête quand une cible est fermée ou au verrouillage', async () => {
+    const a = await registered(1);
+    const b = await registered(2);
+    useBroadcast.getState().start([a.tabId, b.tabId]);
+    closeTab(b.tabId);
+    expect(useBroadcast.getState().targets).toEqual([]);
+
+    const c = await registered(3);
+    useBroadcast.getState().start([a.tabId, c.tabId]);
+    closeAllTabs();
+    expect(useBroadcast.getState().targets).toEqual([]);
+  });
+
+  it('refuse d’activer la diffusion avec moins de deux cibles', () => {
+    useBroadcast.getState().start(['seul', 'seul']);
+    expect(useBroadcast.getState().targets).toEqual([]);
+  });
+});
+
+describe('envoi de texte (snippets, SNP-03)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    closeAllTabs();
+  });
+
+  it('envoie le texte à cette seule session, même en diffusion', async () => {
+    const a = await registered(1);
+    const b = await registered(2);
+    useBroadcast.getState().start([a.tabId, b.tabId]);
+    expect(a.session.sendText('ls\nwhoami', true)).toBe(true);
+    await vi.waitFor(() => {
+      expect(writesTo(1)).toEqual(['ls\rwhoami\r']);
+    });
+    expect(writesTo(2)).toEqual([]);
+  });
+
+  it('encadre le texte si le shell a demandé le collage encadré, et n’ajoute Entrée qu’à la demande', async () => {
+    const a = await registered(1);
+    fake(a.session).modes.bracketedPasteMode = true;
+    a.session.sendText('ls', false);
+    await vi.waitFor(() => {
+      expect(writesTo(1)).toEqual(['\x1b[200~ls\x1b[201~']);
+    });
+  });
+
+  it('refuse un texte avec des caractères de contrôle ou sans session', async () => {
+    const a = await registered(1);
+    expect(a.session.sendText('ls\x1b[201~; rm -rf /', true)).toBe(false);
+    expect(a.session.sendText('a\rb', false)).toBe(false);
+    a.disconnect();
+    expect(a.session.sendText('ls', true)).toBe(false);
+    expect(writesTo(1)).toEqual([]);
+  });
+});
+
+describe('fermeture des panneaux (SSH-07)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    closeAllTabs();
+    useSessions.setState({ tabs: [], activeTabId: HOME_TAB_ID, layouts: {}, focusedPane: {} });
+  });
+
+  it('ferme tous les panneaux d’un onglet, ou un seul panneau', async () => {
+    const root = await registered(1);
+    const second = useSessions.getState().splitPane(root.tabId, 'row') ?? '';
+    await registered(2, second);
+    const third = useSessions.getState().splitPane(second, 'column') ?? '';
+    await registered(3, third);
+
+    closePane(third);
+    expect(ipc.sshClose).toHaveBeenCalledWith(3);
+    expect(existingTerminalSession(third)).toBeUndefined();
+    expect(useSessions.getState().tabs.map((t) => t.id)).toEqual([root.tabId, second]);
+
+    closeTab(root.tabId);
+    expect(ipc.sshClose).toHaveBeenCalledWith(1);
+    expect(ipc.sshClose).toHaveBeenCalledWith(2);
+    expect(useSessions.getState().tabs).toEqual([]);
+    expect(useSessions.getState().layouts).toEqual({});
   });
 });
