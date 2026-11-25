@@ -22,6 +22,26 @@ updates:
     groups:
       npm-mineures:
         update-types: [minor, patch]
+    ignore:
+      # xterm.js reste en 5.x (ADR-025) : la 6 casse `freezePrototype` (test
+      # src/frozen-prototype.test.tsx). Les versions d'extensions ci-dessous sont celles
+      # d'xterm 6 : elles cassent aussi `freezePrototype`. À lever par un nouvel ADR.
+      - dependency-name: '@xterm/xterm'
+        versions: ['>= 6.0.0']
+      - dependency-name: '@xterm/addon-fit'
+        versions: ['>= 0.11.0']
+      - dependency-name: '@xterm/addon-search'
+        versions: ['>= 0.16.0']
+      - dependency-name: '@xterm/addon-unicode11'
+        versions: ['>= 0.9.0']
+      - dependency-name: '@xterm/addon-web-links'
+        versions: ['>= 0.12.0']
+      - dependency-name: '@xterm/addon-webgl'
+        versions: ['>= 0.19.0']
+      # TypeScript 7 : pas encore pris en charge par typescript-eslint (dépendance pair
+      # < 6.1). À lever quand typescript-eslint l'acceptera.
+      - dependency-name: typescript
+        versions: ['>= 7.0.0']
 
   - package-ecosystem: github-actions
     directory: /
