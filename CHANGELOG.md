@@ -79,6 +79,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Verrouiller l'application, la recharger ou la fermer ferme aussi les fenêtres RDP ouvertes depuis Younji.
 
 ### Corrigé
+- Un coffre enregistré par une version de test de l'étape 6 (tunnels, retirée) était refusé à l'ouverture avec « Mot de passe incorrect ou coffre endommagé ». Le champ `tunnels` est désormais accepté puis oublié ; il disparaît à la prochaine sauvegarde du coffre. Tout autre champ inconnu reste refusé.
 - Les lettres accentuées tapées au clavier n'apparaissaient pas sur un serveur sans locale (bash en locale « C ») : Younji propose désormais `LANG=C.UTF-8` et `LC_CTYPE=C.UTF-8` à l'ouverture du shell, comme OpenSSH envoie `LANG LC_*` ; `LC_CTYPE` reste efficace quand le serveur réécrit `LANG=C` (conteneurs Proxmox).
 - Un panneau non connecté peut être fermé (bouton ✕ toujours visible sur un onglet découpé).
 - Le menu contextuel natif de la WebView (dont « Recharger », qui fermait toutes les sessions) est bloqué hors des champs de saisie.
