@@ -16,7 +16,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 6 | ~~Tunnels SSH~~ (retirée, ADR-038) | ❌ |
 | 7 | Terminal local | 🟨 |
 | 8 | RDP v1 (client système) | 🟨 |
-| 9 | Import OpenSSH, export/import chiffré | ⬜ |
+| 9 | Import OpenSSH, export/import chiffré | 🟨 |
 | 10 | Déverrouillage par le système | ⬜ |
 | 11 | Clés FIDO2 | ⬜ |
 | 12 | RDP natif (IronRDP) | ⬜ |
