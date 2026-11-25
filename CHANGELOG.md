@@ -75,6 +75,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Le menu contextuel natif de la WebView (dont « Recharger », qui fermait toutes les sessions) est bloqué hors des champs de saisie.
 
 ### Sécurité
+- Le client SSH refuse tout canal que le serveur tente d'ouvrir vers le poste (redirections, X11, transfert d'agent, nouveau shell) ; la bibliothèque SSH les acceptait par défaut.
 - Configuration Tauri durcie : politique de sécurité du contenu (CSP) stricte, aucun contenu distant, pas d'API Tauri globale exposée à l'interface, prototypes JavaScript gelés.
 - Chaque commande du cœur doit être autorisée explicitement pour la fenêtre (capabilities) ; les appels de l'interface passent en plus par une iframe d'isolation qui filtre les commandes (ADR-015).
 - La fenêtre ne peut afficher que le contenu de l'application : la navigation vers une autre adresse et l'ouverture de nouvelles fenêtres sont refusées.
