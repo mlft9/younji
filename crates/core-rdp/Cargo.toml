@@ -1,0 +1,35 @@
+[package]
+name = "core-rdp"
+description = "RDP de Younji : lancement du client du système sans exposer le mot de passe (sans dépendance à Tauri)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+secrecy = "0.10.3"
+tempfile = "3"
+thiserror.workspace = true
+tracing.workspace = true
+zeroize = "1.9"
+
+# Gestionnaire d'identifiants Windows (CredWriteW / CredReadW / CredDeleteW) ; MIT OR Apache-2.0,
+# déjà présent dans l'arbre via Tauri.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
+
+# Mêmes règles que le workspace, sauf `unsafe_code` : `deny` au lieu de `forbid`, pour que le
+# seul module `wincred` (appels Win32, ADR-040) puisse l'autoriser localement. Toute autre
+# utilisation d'`unsafe` dans la crate reste une erreur de compilation.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+dbg_macro = "deny"
+todo = "deny"
+undocumented_unsafe_blocks = "deny"

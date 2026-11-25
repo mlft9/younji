@@ -42,6 +42,7 @@ const HOST_WITH_IDENTITY: HostEntry = {
   groupId: null,
   tags: [],
   notes: '',
+  protocol: { kind: 'ssh' },
 };
 const HOST_WITHOUT_IDENTITY: HostEntry = {
   ...HOST_WITH_IDENTITY,

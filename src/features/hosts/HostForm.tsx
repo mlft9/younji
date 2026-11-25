@@ -7,13 +7,20 @@ import { Modal } from '@/components/ui/modal';
 import { NativeSelect } from '@/components/ui/native-select';
 import { ErrorMessage } from '@/features/connect/ErrorMessage';
 import { hostSave, toAppError } from '@/lib/ipc';
-import type { EntryId, GroupEntry, HostEntry, IdentityEntry } from '@/lib/types';
+import type { EntryId, GroupEntry, HostEntry, HostProtocol, IdentityEntry } from '@/lib/types';
 
 import { parseTags } from './filter';
 
 /** Bornes reprises du cœur (revérifiées par lui). */
 const MAX_TAGS = 16;
 const MAX_NOTES = 4096;
+/** Ports par défaut, proposés au changement de protocole. */
+const DEFAULT_PORT = { ssh: 22, rdp: 3389 } as const;
+/** Bornes de la résolution RDP, reprises du cœur (revérifiées par lui). */
+const RDP_WIDTH = { min: 640, max: 7680 };
+const RDP_HEIGHT = { min: 480, max: 4320 };
+/** Domaine RDP : mêmes règles que le cœur. */
+const RDP_DOMAIN = /^(?![-/])[A-Za-z0-9._-]{0,255}$/;
 
 interface HostFormProps {
   /** Hôte à modifier, ou `null` pour en créer un. */
@@ -39,12 +46,50 @@ export function HostForm({
   const id = useId();
   const [name, setName] = useState(host?.name ?? '');
   const [address, setAddress] = useState(host?.address ?? '');
-  const [port, setPort] = useState(String(host?.port ?? 22));
+  const [port, setPort] = useState(
+    String(host?.port ?? DEFAULT_PORT[host?.protocol.kind === 'rdp' ? 'rdp' : 'ssh']),
+  );
   const [username, setUsername] = useState(host?.username ?? '');
   const [identityId, setIdentityId] = useState<string>(host?.identityId ?? '');
   const [groupId, setGroupId] = useState<string>(host?.groupId ?? defaultGroupId ?? '');
   const [tags, setTags] = useState(host?.tags.join(', ') ?? '');
   const [notes, setNotes] = useState(host?.notes ?? '');
+  const initialRdp = host?.protocol.kind === 'rdp' ? host.protocol : null;
+  const [protocol, setProtocol] = useState<'ssh' | 'rdp'>(initialRdp ? 'rdp' : 'ssh');
+  const [domain, setDomain] = useState(initialRdp?.domain ?? '');
+  const [fullscreen, setFullscreen] = useState(
+    initialRdp ? initialRdp.resolution.mode === 'fullscreen' : true,
+  );
+  const [width, setWidth] = useState(
+    String(initialRdp?.resolution.mode === 'fixed' ? initialRdp.resolution.width : 1920),
+  );
+  const [height, setHeight] = useState(
+    String(initialRdp?.resolution.mode === 'fixed' ? initialRdp.resolution.height : 1080),
+  );
+
+  function changeProtocol(next: 'ssh' | 'rdp') {
+    // Port par défaut du protocole, seulement si l'utilisateur n'en a pas saisi d'autre.
+    if (port === String(DEFAULT_PORT[protocol])) setPort(String(DEFAULT_PORT[next]));
+    setProtocol(next);
+  }
+
+  /** Protocole saisi, ou un code d'erreur si les réglages RDP sont hors bornes. */
+  function protocolValue(): HostProtocol | string {
+    if (protocol === 'ssh') return { kind: 'ssh' };
+    if (!RDP_DOMAIN.test(domain)) return 'vault.invalid_rdp';
+    if (fullscreen) return { kind: 'rdp', domain, resolution: { mode: 'fullscreen' } };
+    const w = Number(width);
+    const h = Number(height);
+    const inRange =
+      /^\d+$/.test(width) &&
+      /^\d+$/.test(height) &&
+      w >= RDP_WIDTH.min &&
+      w <= RDP_WIDTH.max &&
+      h >= RDP_HEIGHT.min &&
+      h <= RDP_HEIGHT.max;
+    if (!inRange) return 'vault.invalid_rdp';
+    return { kind: 'rdp', domain, resolution: { mode: 'fixed', width: w, height: h } };
+  }
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,6 +106,11 @@ export function HostForm({
     }
     if (identityId === '' && username === '') {
       setError('vault.invalid_username');
+      return;
+    }
+    const protocolOrError = protocolValue();
+    if (typeof protocolOrError === 'string') {
+      setError(protocolOrError);
       return;
     }
     const tagList = parseTags(tags);
@@ -80,6 +130,7 @@ export function HostForm({
         groupId: groupId === '' ? null : groupId,
         tags: tagList,
         notes,
+        protocol: protocolOrError,
       });
       onSaved();
       onClose();
@@ -115,6 +166,22 @@ export function HostForm({
             autoComplete="off"
             data-autofocus
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={field('protocol')} className="text-sm font-medium">
+            {t('hosts.form.protocol')}
+          </label>
+          <NativeSelect
+            id={field('protocol')}
+            value={protocol}
+            onChange={(e) => {
+              changeProtocol(e.target.value === 'rdp' ? 'rdp' : 'ssh');
+            }}
+          >
+            <option value="ssh">{t('hosts.form.protocolSsh')}</option>
+            <option value="rdp">{t('hosts.form.protocolRdp')}</option>
+          </NativeSelect>
         </div>
 
         <div className="grid grid-cols-[1fr_6rem] gap-3">
@@ -188,7 +255,73 @@ export function HostForm({
           </div>
         </div>
         {identityId === '' && (
-          <p className="-mt-2 text-xs text-muted-foreground">{t('hosts.form.noIdentityHint')}</p>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            {t(protocol === 'rdp' ? 'hosts.form.rdpNoIdentityHint' : 'hosts.form.noIdentityHint')}
+          </p>
+        )}
+
+        {protocol === 'rdp' && (
+          <fieldset className="flex flex-col gap-3 rounded-md border p-3">
+            <legend className="px-1 text-sm font-medium">{t('hosts.form.rdpSettings')}</legend>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={field('domain')} className="text-sm font-medium">
+                {t('hosts.form.domain')}
+              </label>
+              <Input
+                id={field('domain')}
+                value={domain}
+                onChange={(e) => {
+                  setDomain(e.target.value);
+                }}
+                placeholder={t('hosts.form.domainPlaceholder')}
+                maxLength={255}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={fullscreen}
+                onChange={(e) => {
+                  setFullscreen(e.target.checked);
+                }}
+              />
+              {t('hosts.form.fullscreen')}
+            </label>
+            {!fullscreen && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={field('width')} className="text-sm font-medium">
+                    {t('hosts.form.width')}
+                  </label>
+                  <Input
+                    id={field('width')}
+                    value={width}
+                    onChange={(e) => {
+                      setWidth(e.target.value);
+                    }}
+                    inputMode="numeric"
+                    maxLength={4}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={field('height')} className="text-sm font-medium">
+                    {t('hosts.form.height')}
+                  </label>
+                  <Input
+                    id={field('height')}
+                    value={height}
+                    onChange={(e) => {
+                      setHeight(e.target.value);
+                    }}
+                    inputMode="numeric"
+                    maxLength={4}
+                  />
+                </div>
+              </div>
+            )}
+          </fieldset>
         )}
 
         <div className="flex flex-col gap-1.5">

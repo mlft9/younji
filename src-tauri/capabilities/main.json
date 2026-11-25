@@ -64,6 +64,7 @@
     "allow-term-write",
     "allow-term-resize",
     "allow-term-ack",
-    "allow-term-close"
+    "allow-term-close",
+    "allow-rdp-launch"
   ]
 }

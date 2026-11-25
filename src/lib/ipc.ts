@@ -19,6 +19,7 @@ import type {
   KeyGenerateRequest,
   KeyImportRequest,
   KnownHostEntry,
+  RdpLaunchResult,
   LocalProfile,
   JobId,
   LocalListing,
@@ -193,6 +194,16 @@ export function termAck(terminalId: TerminalId, bytes: number): Promise<void> {
 /** Ferme un terminal local (le processus est arrêté). */
 export function termClose(terminalId: TerminalId): Promise<void> {
   return call<undefined>('term_close', { terminalId });
+}
+
+// ------------------------------------------------------------------ RDP
+
+/**
+ * Ouvre un hôte RDP du carnet dans le client du système (mstsc, xfreerdp). Le cœur lit l'hôte
+ * et son identité dans le coffre : aucun secret ne passe par l'interface.
+ */
+export function rdpLaunch(hostId: EntryId): Promise<RdpLaunchResult> {
+  return call<RdpLaunchResult>('rdp_launch', { hostId });
 }
 
 // ------------------------------------------------------------------ coffre

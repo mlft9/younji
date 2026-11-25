@@ -292,10 +292,13 @@
       "known_hosts_too_large": "Trop de clés d'hôte enregistrées.",
       "password_mismatch": "Les deux mots de passe ne sont pas identiques.",
       "current_password_required": "Saisissez le mot de passe actuel.",
-      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez."
+      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez.",
+      "invalid_rdp": "Réglages RDP invalides : domaine (lettres, chiffres, « . », « - », « _ ») ou résolution hors limites."
     },
     "book": {
-      "no_identity": "Cet hôte n'a pas d'identité enregistrée."
+      "no_identity": "Cet hôte n'a pas d'identité enregistrée.",
+      "not_ssh": "Cet hôte est un hôte RDP : il ne s'ouvre pas en SSH.",
+      "not_rdp": "Cet hôte est un hôte SSH : il ne s'ouvre pas en RDP."
     },
     "settings": {
       "invalid": "Paramètre invalide.",
@@ -329,6 +332,20 @@
       "spawn_failed": "Le shell n'a pas pu être lancé.",
       "closed": "Le terminal est fermé.",
       "exited": "Le shell s'est terminé."
+    },
+    "rdp": {
+      "invalid_address": "Adresse RDP invalide.",
+      "invalid_port": "Port RDP invalide.",
+      "invalid_username": "Utilisateur RDP invalide (vide ou caractères interdits). Renseignez un utilisateur sur l'hôte ou son identité.",
+      "invalid_domain": "Domaine RDP invalide.",
+      "invalid_resolution": "Résolution RDP hors limites.",
+      "invalid_password": "Le mot de passe de l'identité ne peut pas être transmis au client RDP (vide, trop long ou sur plusieurs lignes).",
+      "client_not_found": "Aucun client RDP trouvé. Sous Linux, installez FreeRDP 3 (paquet freerdp3-x11, commande xfreerdp3).",
+      "password_required": "Sous Linux, l'identité de l'hôte doit contenir un mot de passe : FreeRDP ne peut pas le demander lui-même.",
+      "credential_failed": "Windows a refusé l'identifiant temporaire de connexion.",
+      "temp_file_failed": "Le fichier de connexion temporaire n'a pas pu être créé.",
+      "launch_failed": "Le client RDP n'a pas pu être lancé.",
+      "busy": "Une ouverture RDP vers ce serveur est déjà en cours. Réessayez dans une minute."
     }
   },
   "vault": {
@@ -398,8 +415,22 @@
       "group": "Groupe",
       "tags": "Étiquettes",
       "tagsPlaceholder": "prod, web, lab (séparées par des virgules)",
-      "notes": "Notes"
-    }
+      "notes": "Notes",
+      "protocol": "Protocole",
+      "protocolSsh": "SSH (terminal, SFTP)",
+      "protocolRdp": "RDP (bureau Windows, client du système)",
+      "rdpSettings": "Réglages RDP",
+      "domain": "Domaine",
+      "domainPlaceholder": "facultatif, ex. LAB",
+      "fullscreen": "Plein écran",
+      "width": "Largeur (px)",
+      "height": "Hauteur (px)",
+      "rdpNoIdentityHint": "Sans identité, le mot de passe est demandé par mstsc sous Windows ; sous Linux, une identité avec mot de passe est nécessaire."
+    },
+    "openRdp": "Ouvrir en RDP",
+    "rdpLaunched": "{{name}} : client RDP lancé. Le mot de passe a été transmis sans passer par la ligne de commande.",
+    "rdpExistingCredential": "{{name}} : client RDP lancé avec l'identifiant déjà enregistré dans Windows pour ce serveur (Younji ne l'a pas modifié).",
+    "rdpBadge": "RDP"
   },
   "keys": {
     "title": "Clés privées",

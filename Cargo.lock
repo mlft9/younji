@@ -627,6 +627,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-rdp"
+version = "0.1.0"
+dependencies = [
+ "secrecy",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "windows-sys 0.61.2",
+ "zeroize",
+]
+
+[[package]]
 name = "core-ssh"
 version = "0.1.0"
 dependencies = [
@@ -6223,6 +6235,7 @@ dependencies = [
 name = "younji"
 version = "0.1.0"
 dependencies = [
+ "core-rdp",
  "core-ssh",
  "core-term",
  "core-vault",

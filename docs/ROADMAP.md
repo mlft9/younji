@@ -15,7 +15,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 5 | Split, snippets, diffusion multi-sessions | ✅ |
 | 6 | ~~Tunnels SSH~~ (retirée, ADR-038) | ❌ |
 | 7 | Terminal local | 🟨 |
-| 8 | RDP v1 (client système) | ⬜ |
+| 8 | RDP v1 (client système) | 🟨 |
 | 9 | Import OpenSSH, export/import chiffré | ⬜ |
 | 10 | Déverrouillage par le système | ⬜ |
 | 11 | Clés FIDO2 | ⬜ |
@@ -158,7 +158,7 @@ Contenu : crate `core-term` (`portable-pty`, ConPTY sous Windows), profils déte
 ---
 
 ## Étape 8 — RDP v1 (client système)
-Contenu : hôtes RDP dans le carnet (RDP-01). Sous Windows : fichier `.rdp` temporaire + identifiants via le gestionnaire d'identifiants Windows, supprimés après usage → `mstsc`. Sous Linux : détection de `xfreerdp`/`xfreerdp3`, mot de passe transmis par l'entrée standard. RDP-02.
+Contenu : hôtes RDP dans le carnet (RDP-01). Sous Windows : fichier `.rdp` temporaire + identifiants via le gestionnaire d'identifiants Windows, supprimés après usage → `mstsc`. Sous Linux : détection de `xfreerdp3` (FreeRDP 3, ADR-040), mot de passe transmis par l'entrée standard. RDP-02.
 
 **Critères d'acceptation**
 - [ ] Connexion à la VM Windows du lab depuis Windows et depuis Linux.

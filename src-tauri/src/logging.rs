@@ -25,6 +25,7 @@ const THIRD_PARTY_LEVEL: LevelFilter = LevelFilter::WARN;
 const OWN_TARGETS: &[&str] = &[
     "younji",
     "younji_lib",
+    "core_rdp",
     "core_ssh",
     "core_term",
     "core_vault",
@@ -155,15 +156,15 @@ mod tests {
     fn log_level_applies_only_to_younji_targets() {
         assert_eq!(
             filter_directives(None),
-            "warn,younji=info,younji_lib=info,core_ssh=info,core_term=info,core_vault=info"
+            "warn,younji=info,younji_lib=info,core_rdp=info,core_ssh=info,core_term=info,core_vault=info"
         );
         assert_eq!(
             filter_directives(Some("TRACE")),
-            "warn,younji=trace,younji_lib=trace,core_ssh=trace,core_term=trace,core_vault=trace"
+            "warn,younji=trace,younji_lib=trace,core_rdp=trace,core_ssh=trace,core_term=trace,core_vault=trace"
         );
         assert_eq!(
             filter_directives(Some(" debug ")),
-            "warn,younji=debug,younji_lib=debug,core_ssh=debug,core_term=debug,core_vault=debug"
+            "warn,younji=debug,younji_lib=debug,core_rdp=debug,core_ssh=debug,core_term=debug,core_vault=debug"
         );
     }
 
@@ -173,7 +174,7 @@ mod tests {
         for value in ["russh=trace", "trace,tauri=trace", "[{}]", ""] {
             assert_eq!(
                 filter_directives(Some(value)),
-                "warn,younji=info,younji_lib=info,core_ssh=info,core_term=info,core_vault=info",
+                "warn,younji=info,younji_lib=info,core_rdp=info,core_ssh=info,core_term=info,core_vault=info",
                 "{value}"
             );
         }

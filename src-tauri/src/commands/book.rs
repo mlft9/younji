@@ -8,8 +8,8 @@
 use core_ssh::auth::import_private_key;
 use core_ssh::{ImportedKey, KeyInfo, KeyKind, KnownHostEntry, Target};
 use core_vault::{
-    EntryId, Group, Host, HostInput, Identity, IdentityInput, NewKey, PasswordChange, StoredKey,
-    VaultData,
+    EntryId, Group, Host, HostInput, HostProtocol, Identity, IdentityInput, NewKey, PasswordChange,
+    StoredKey, VaultData,
 };
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,7 @@ pub struct HostDto {
     group_id: Option<EntryId>,
     tags: Vec<String>,
     notes: String,
+    protocol: HostProtocol,
 }
 
 impl From<&Host> for HostDto {
@@ -50,6 +51,7 @@ impl From<&Host> for HostDto {
             group_id: host.group_id,
             tags: host.tags.clone(),
             notes: host.notes.clone(),
+            protocol: host.protocol.clone(),
         }
     }
 }
@@ -194,6 +196,9 @@ pub struct HostRequest {
     group_id: Option<EntryId>,
     tags: Vec<String>,
     notes: String,
+    /// Protocole (SSH par défaut si absent).
+    #[serde(default)]
+    protocol: HostProtocol,
 }
 
 /// Modification du mot de passe d'une identité. Pas de `Debug` : contient un secret.
@@ -305,6 +310,7 @@ pub async fn host_save(
         group_id: request.group_id,
         tags: request.tags,
         notes: request.notes,
+        protocol: request.protocol,
     };
     state
         .update_blocking(move |data| data.upsert_host(input))

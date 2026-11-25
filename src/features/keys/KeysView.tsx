@@ -265,7 +265,8 @@ export function KeysView() {
       {dialog?.kind === 'deploy' && (
         <KeyDeployDialog
           keyEntry={dialog.key}
-          hosts={snapshot.hosts}
+          // Déploiement de clé : hôtes SSH seulement (un hôte RDP est refusé par le cœur).
+          hosts={snapshot.hosts.filter((h) => h.protocol.kind === 'ssh')}
           onClose={close}
           onManageHostKeys={() => {
             document.getElementById('known-hosts-title')?.scrollIntoView();

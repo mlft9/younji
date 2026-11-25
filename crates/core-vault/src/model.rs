@@ -72,6 +72,96 @@ fn serialize_optional_secret<S: Serializer>(
     }
 }
 
+/// Longueur maximale d'un domaine RDP.
+pub const MAX_RDP_DOMAIN_LEN: usize = 255;
+/// Largeur RDP admise (pixels).
+pub const RDP_WIDTH_RANGE: std::ops::RangeInclusive<u16> = 640..=7680;
+/// Hauteur RDP admise (pixels).
+pub const RDP_HEIGHT_RANGE: std::ops::RangeInclusive<u16> = 480..=4320;
+
+/// Résolution d'une session RDP (RDP-01).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "mode",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum RdpResolution {
+    /// Plein écran.
+    Fullscreen {},
+    /// Taille fixe, en pixels.
+    Fixed {
+        /// Largeur.
+        width: u16,
+        /// Hauteur.
+        height: u16,
+    },
+}
+
+/// Protocole d'un hôte (étape 8). Absent des coffres créés avant : SSH.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum HostProtocol {
+    /// SSH (terminal, SFTP).
+    Ssh {},
+    /// RDP, ouvert dans le client du système (RDP-02).
+    Rdp {
+        /// Domaine Windows (vide : aucun).
+        domain: String,
+        /// Résolution.
+        resolution: RdpResolution,
+    },
+}
+
+impl Default for HostProtocol {
+    fn default() -> Self {
+        Self::Ssh {}
+    }
+}
+
+impl HostProtocol {
+    /// Vrai pour un hôte RDP.
+    pub fn is_rdp(&self) -> bool {
+        matches!(self, Self::Rdp { .. })
+    }
+}
+
+/// Domaine RDP : vide, ou 1 à 255 caractères parmi lettres, chiffres, `.`, `-`, `_`. Il finit
+/// dans un fichier `.rdp` et en argument de FreeRDP : rien qui puisse changer de ligne ou
+/// d'option.
+pub fn is_valid_rdp_domain(domain: &str) -> bool {
+    domain.len() <= MAX_RDP_DOMAIN_LEN
+        && !domain.starts_with(['-', '/'])
+        && domain
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+fn check_protocol(protocol: &HostProtocol) -> Result<(), VaultError> {
+    match protocol {
+        HostProtocol::Ssh {} => Ok(()),
+        HostProtocol::Rdp { domain, resolution } => {
+            let resolution_ok = match resolution {
+                RdpResolution::Fullscreen {} => true,
+                RdpResolution::Fixed { width, height } => {
+                    RDP_WIDTH_RANGE.contains(width) && RDP_HEIGHT_RANGE.contains(height)
+                }
+            };
+            if is_valid_rdp_domain(domain) && resolution_ok {
+                Ok(())
+            } else {
+                Err(VaultError::InvalidRdpSettings)
+            }
+        }
+    }
+}
+
 /// Hôte du carnet (HST-01).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -94,6 +184,9 @@ pub struct Host {
     pub tags: Vec<String>,
     /// Notes libres.
     pub notes: String,
+    /// Protocole (SSH par défaut, pour les coffres créés avant l'étape 8).
+    #[serde(default)]
+    pub protocol: HostProtocol,
 }
 
 /// Groupe d'hôtes, à un seul niveau (HST-02).
@@ -279,6 +372,8 @@ pub struct HostInput {
     pub tags: Vec<String>,
     /// Notes.
     pub notes: String,
+    /// Protocole.
+    pub protocol: HostProtocol,
 }
 
 /// Changement du mot de passe d'une identité.
@@ -560,6 +655,7 @@ impl VaultData {
         check_username(&input.username, input.identity_id.is_none())?;
         let tags = clean_tags(&input.tags)?;
         check_notes(&input.notes)?;
+        check_protocol(&input.protocol)?;
         if let Some(identity) = input.identity_id {
             self.identity(identity)?;
         }
@@ -575,6 +671,7 @@ impl VaultData {
             group_id: input.group_id,
             tags,
             notes: input.notes,
+            protocol: input.protocol,
         };
         match input.id {
             Some(id) => {
@@ -837,6 +934,47 @@ mod tests {
             group_id: None,
             tags: vec!["lab".into()],
             notes: String::new(),
+            protocol: HostProtocol::default(),
+        }
+    }
+
+    #[test]
+    fn hosts_without_protocol_are_ssh() {
+        let json = r#"{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff","name":"n","address":"a","port":22,"username":"u","identityId":null,"groupId":null,"tags":[],"notes":""}"#;
+        let host: Host = serde_json::from_str(json).unwrap();
+        assert_eq!(host.protocol, HostProtocol::Ssh {});
+    }
+
+    #[test]
+    fn rdp_settings_are_validated() {
+        let rdp = |domain: &str, resolution| HostProtocol::Rdp {
+            domain: domain.into(),
+            resolution,
+        };
+        let fixed = |width, height| RdpResolution::Fixed { width, height };
+        let mut data = VaultData::default();
+        for ok in [
+            rdp("", RdpResolution::Fullscreen {}),
+            rdp("LAB", fixed(1920, 1080)),
+            rdp("corp.example.com", fixed(640, 480)),
+        ] {
+            let mut input = host_input("w");
+            input.protocol = ok.clone();
+            let id = data.upsert_host(input).unwrap();
+            assert_eq!(data.host(id).unwrap().protocol, ok);
+        }
+        for bad in [
+            rdp("LAB\nalternate shell:s:cmd", RdpResolution::Fullscreen {}),
+            rdp("a b", RdpResolution::Fullscreen {}),
+            rdp("/p:x", RdpResolution::Fullscreen {}),
+            rdp("-x", RdpResolution::Fullscreen {}),
+            rdp(&"a".repeat(256), RdpResolution::Fullscreen {}),
+            rdp("", fixed(100, 1080)),
+            rdp("", fixed(1920, 9000)),
+        ] {
+            let mut input = host_input("w");
+            input.protocol = bad;
+            assert_eq!(data.upsert_host(input), Err(VaultError::InvalidRdpSettings));
         }
     }
 

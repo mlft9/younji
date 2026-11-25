@@ -25,6 +25,7 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
 tracing-appender = "0.2.5"
 core-ssh = { version = "0.1.0", path = "../crates/core-ssh" }
+core-rdp = { version = "0.1.0", path = "../crates/core-rdp" }
 core-term = { version = "0.1.0", path = "../crates/core-term" }
 core-vault = { version = "0.1.0", path = "../crates/core-vault" }
 tauri-plugin-dialog = "2.8.4"

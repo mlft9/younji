@@ -110,6 +110,14 @@ export interface VaultEvent {
 /** Identifiant opaque d'une entrée du coffre (UUID). */
 export type EntryId = string;
 
+/** Résolution d'une session RDP. */
+export type RdpResolution =
+  { mode: 'fullscreen' } | { mode: 'fixed'; width: number; height: number };
+
+/** Protocole d'un hôte (étape 8) : SSH, ou RDP ouvert dans le client du système. */
+export type HostProtocol =
+  { kind: 'ssh' } | { kind: 'rdp'; domain: string; resolution: RdpResolution };
+
 /** Hôte du carnet (aucun secret). */
 export interface HostEntry {
   id: EntryId;
@@ -121,6 +129,13 @@ export interface HostEntry {
   groupId: EntryId | null;
   tags: string[];
   notes: string;
+  protocol: HostProtocol;
+}
+
+/** Résultat de l'ouverture d'un hôte RDP. */
+export interface RdpLaunchResult {
+  /** Windows : un identifiant déjà enregistré par l'utilisateur pour ce serveur a été utilisé. */
+  existingCredential: boolean;
 }
 
 /** Groupe d'hôtes. */

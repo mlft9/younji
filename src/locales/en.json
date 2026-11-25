@@ -292,10 +292,13 @@
       "known_hosts_too_large": "Too many host keys stored.",
       "password_mismatch": "The two passwords do not match.",
       "current_password_required": "Enter the current password.",
-      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart."
+      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart.",
+      "invalid_rdp": "Invalid RDP settings: domain (letters, digits, “.”, “-”, “_”) or resolution out of range."
     },
     "book": {
-      "no_identity": "This host has no saved identity."
+      "no_identity": "This host has no saved identity.",
+      "not_ssh": "This is an RDP host: it cannot be opened over SSH.",
+      "not_rdp": "This is an SSH host: it cannot be opened over RDP."
     },
     "settings": {
       "invalid": "Invalid setting.",
@@ -329,6 +332,20 @@
       "spawn_failed": "The shell could not be started.",
       "closed": "The terminal is closed.",
       "exited": "The shell has exited."
+    },
+    "rdp": {
+      "invalid_address": "Invalid RDP address.",
+      "invalid_port": "Invalid RDP port.",
+      "invalid_username": "Invalid RDP user (empty or forbidden characters). Set a user on the host or its identity.",
+      "invalid_domain": "Invalid RDP domain.",
+      "invalid_resolution": "RDP resolution out of range.",
+      "invalid_password": "The identity's password cannot be passed to the RDP client (empty, too long or multi-line).",
+      "client_not_found": "No RDP client found. On Linux, install FreeRDP 3 (freerdp3-x11 package, xfreerdp3 command).",
+      "password_required": "On Linux, the host's identity must include a password: FreeRDP cannot ask for it itself.",
+      "credential_failed": "Windows refused the temporary sign-in credential.",
+      "temp_file_failed": "The temporary connection file could not be created.",
+      "launch_failed": "The RDP client could not be started.",
+      "busy": "An RDP launch to this server is already in progress. Try again in a minute."
     }
   },
   "vault": {
@@ -398,8 +415,22 @@
       "group": "Group",
       "tags": "Tags",
       "tagsPlaceholder": "prod, web, lab (comma-separated)",
-      "notes": "Notes"
-    }
+      "notes": "Notes",
+      "protocol": "Protocol",
+      "protocolSsh": "SSH (terminal, SFTP)",
+      "protocolRdp": "RDP (Windows desktop, system client)",
+      "rdpSettings": "RDP settings",
+      "domain": "Domain",
+      "domainPlaceholder": "optional, e.g. LAB",
+      "fullscreen": "Full screen",
+      "width": "Width (px)",
+      "height": "Height (px)",
+      "rdpNoIdentityHint": "Without an identity, mstsc asks for the password on Windows; on Linux, an identity with a password is required."
+    },
+    "openRdp": "Open over RDP",
+    "rdpLaunched": "{{name}}: RDP client started. The password was passed without using the command line.",
+    "rdpExistingCredential": "{{name}}: RDP client started with the credential already saved in Windows for this server (Younji did not change it).",
+    "rdpBadge": "RDP"
   },
   "keys": {
     "title": "Private keys",

@@ -68,6 +68,9 @@ pub enum VaultError {
     /// Mot de passe d'identité vide ou trop long.
     #[error("secret invalide")]
     InvalidSecret,
+    /// Réglages RDP invalides (domaine, résolution).
+    #[error("réglages RDP invalides")]
+    InvalidRdpSettings,
     /// Une identité doit avoir un mot de passe, une clé, ou les deux.
     #[error("identité sans moyen d'authentification")]
     IdentityIncomplete,
@@ -117,6 +120,7 @@ impl VaultError {
             Self::InvalidTags => "vault.invalid_tags",
             Self::InvalidNotes => "vault.invalid_notes",
             Self::InvalidSecret => "vault.invalid_secret",
+            Self::InvalidRdpSettings => "vault.invalid_rdp",
             Self::IdentityIncomplete => "vault.identity_incomplete",
             Self::InvalidAutoLock => "vault.invalid_auto_lock",
             Self::TooManyEntries => "vault.too_many_entries",
@@ -149,6 +153,7 @@ impl VaultError {
         Self::InvalidTags,
         Self::InvalidNotes,
         Self::InvalidSecret,
+        Self::InvalidRdpSettings,
         Self::IdentityIncomplete,
         Self::InvalidAutoLock,
         Self::TooManyEntries,

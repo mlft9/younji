@@ -1,4 +1,4 @@
-# Recette manuelle — étapes 0 à 7
+# Recette manuelle — étapes 0 à 8
 
 Fiche de test du porteur : ce qu'il faut installer, puis les tests à dérouler, étape par étape.
 Coche au fur et à mesure, note ce qui coince (capture d'écran si possible), puis envoie tes retours avec `/retour`.
@@ -60,7 +60,7 @@ Tout est détaillé dans `docs/ENVIRONNEMENT_DE_TEST.md` §3. En résumé :
 ### A3. Optionnel pour l'instant
 - **Tests d'intégration automatiques** contre ta VM : fichier `.env.test` à la racine (§6 de `ENVIRONNEMENT_DE_TEST.md`), puis `npm run test:integration`. Utile mais pas nécessaire pour la recette manuelle (la CI les lance déjà contre un conteneur).
 - **`younji-desktop`** (Ubuntu Desktop) : pour vérifier la version Linux (`.deb` / AppImage produits par le workflow `build.yml`). À faire au moins une fois avant la publication.
-- **`younji-win`** : utile surtout à partir de l'étape 8 (RDP) et pour tester l'installeur sur un Windows vierge.
+- **`younji-win`** : nécessaire pour l'étape 8 (RDP, préparation dans `ENVIRONNEMENT_DE_TEST.md` §4) et utile pour tester l'installeur sur un Windows vierge.
 
 ---
 
@@ -236,6 +236,51 @@ Retirée du périmètre (ADR-038) : rien à tester.
 
 **Limite connue (simple observation)**
 - [ ] `sleep 300 & disown` puis `exit` : l'onglet peut rester ouvert jusqu'à la fin de `sleep` (le processus restant garde le terminal ouvert). Sous Windows, `Start-Process notepad` puis `exit` : le Bloc-notes reste ouvert, c'est attendu.
+
+### Étape 8 — RDP v1 (client du système)
+
+> **Préparation de la VM `younji-win`** (PowerShell administrateur, puis snapshot `rdp-pret`) : commandes de `ENVIRONNEMENT_DE_TEST.md` §4. Choisis pour `testrdp` un mot de passe propre au lab contenant un **marqueur unique** (par exemple `Rdp7319`), pour le chercher ensuite avec `grep` ; ne le note pas dans le dépôt. Relève le nom renvoyé par `hostname` (`<NOMPC>`).
+> **Préparation de `younji-desktop`** : `sudo apt install -y freerdp3-x11 && xfreerdp3 --version` (3.x attendu), puis `rm -rf ~/.config/freerdp`.
+> **Dans Younji** : une identité `rdp-lab` (utilisateur `testrdp`, mot de passe ci-dessus).
+> **PC Windows** : `cmdkey /list | findstr TERMSRV` ne doit rien afficher pour l'IP de la VM.
+
+**Carnet (RDP-01)**
+- [ ] ⭐ R1 — Nouvel hôte, protocole RDP : le port passe à 3389, les champs Domaine, Plein écran, Largeur, Hauteur apparaissent.
+- [ ] R2 — Retour en SSH : port 22, réglages RDP masqués.
+- [ ] ⭐ R3 — « Win-plein » (IP de la VM, identité `rdp-lab`, domaine vide, plein écran) : icône écran et badge « RDP ».
+- [ ] R4 — « Win-1280 » (domaine `<NOMPC>`, 1280 × 800) : valeurs conservées à la modification.
+- [ ] 🔒 R5 — Domaine `/p:x` ou `LAB x`, largeur 100 ou 9000 : enregistrement refusé, message traduit.
+
+**Windows : mstsc (RDP-02)**
+- [ ] ⭐ R6 — Double-clic sur « Win-plein » : mstsc se connecte en `testrdp` sans demander le mot de passe.
+- [ ] R7 — Premier lancement : laisser l'avertissement de certificat ouvert plus de 60 s, puis accepter ; noter si mstsc redemande le mot de passe (possible : l'identifiant temporaire a disparu).
+- [ ] ⭐🔒 R8 — `wmic process where name='mstsc.exe' get commandline` (ou Process Explorer) : seul le chemin `…\rdp\younji-XXXX.rdp`, aucun mot de passe.
+- [ ] 🔒 R9 — Le `.rdp` de `%LOCALAPPDATA%\io.github.mlft9.younji\rdp\` (premières secondes) : `full address`, `username`, redirections, aucune ligne `password`.
+- [ ] ⭐🔒 R10 — Dans les 60 s : `cmdkey /list` montre `TERMSRV/<ip>` ; 60 s plus tard (session ouverte) : disparu, dossier `rdp\` vide.
+- [ ] 🔒 R11 — Fermer mstsc en moins de 60 s : `TERMSRV/<ip>` et `.rdp` absents aussitôt.
+- [ ] 🔒 R12 — Verrouiller le coffre en moins de 60 s : mstsc se ferme, rien ne reste.
+- [ ] 🔒 R13 — Fermer Younji en moins de 60 s : mstsc se ferme, `TERMSRV/<ip>` absent. Variante : `taskkill /F /IM younji.exe`, l'identifiant reste, puis rouvrir Younji : il a disparu.
+- [ ] ⭐🔒 R14 — `cmdkey /add:TERMSRV/<ip> /user:testrdp /pass` (saisie masquée), lancer « Win-plein » : message « identifiant déjà enregistré dans Windows… » ; après fermeture et 60 s, l'identifiant est toujours là, inchangé. Le supprimer ensuite (`cmdkey /delete:TERMSRV/<ip>`).
+- [ ] R15 — Identité sans mot de passe : mstsc le demande lui-même.
+- [ ] R16 — « Win-1280 » : fenêtre 1280 × 800, connexion réussie.
+
+**Linux : xfreerdp3 (RDP-02), sur `younji-desktop`**
+- [ ] ⭐ R17 — « Win-plein » : connexion en plein écran sans aucune question ; certificat mémorisé dans `~/.config/freerdp/`.
+- [ ] ⭐🔒 R18 — Pendant la session, après `M=<ton marqueur>` : `ps aux | grep -i [f]reerdp`, `pid=$(pgrep -n xfreerdp3); tr '\0' ' ' </proc/$pid/cmdline`, `tr '\0' '\n' </proc/$pid/environ | grep -c "$M"` → arguments `/v:… /u:testrdp /f /cert:tofu,deny +clipboard /from-stdin:force`, aucun `/p:`, compteur à 0.
+- [ ] 🔒 R19 — `grep -rl "$M" ~/.local/share/io.github.mlft9.younji ~/.config/freerdp` : aucun résultat.
+- [ ] R20 — Utilisateur `testrdp`, puis `testrdp@<NOMPC>`, puis `<NOMPC>\testrdp` : noter le résultat de chaque forme (un échec doit être une erreur d'authentification propre, sans question ni mot de passe affiché).
+- [ ] ⭐🔒 R21 — Changer le certificat de la VM (`Get-ChildItem 'Cert:\LocalMachine\Remote Desktop' | Remove-Item; Restart-Service TermService -Force`), relancer : xfreerdp3 refuse **sans question**. Restaurer le snapshot `rdp-pret`.
+- [ ] R22 — `sudo apt remove -y freerdp3-x11` : message « Aucun client RDP trouvé… freerdp3-x11 ». Réinstaller.
+- [ ] R23 — Identité sans mot de passe : message « l'identité doit contenir un mot de passe », aucun xfreerdp3 lancé.
+- [ ] 🔒 R24 — Verrouiller le coffre pendant une session : xfreerdp3 se ferme (`pgrep xfreerdp3` vide).
+- [ ] R25 — Verrouillage automatique à 1 min, rester dans la session RDP : coupée au bout d'1 min environ. Noter si c'est gênant.
+
+**Commun**
+- [ ] 🔒 R26 — Un hôte RDP n'ouvre jamais d'onglet terminal et n'apparaît pas dans « Déployer la clé ».
+- [ ] R27 — VM éteinte : le client affiche son erreur, Younji reste réactif ; sous Windows, `cmdkey /list` propre au bout de 60 s au plus.
+- [ ] R28 — Deux clics rapides sur le même hôte (Windows) : « Une ouverture RDP vers ce serveur est déjà en cours ».
+- [ ] R29 — Interface en anglais : formulaire, badge, bouton, erreurs traduits.
+- [ ] 🔒 R30 — Coffre créé avant l'étape 8 : les hôtes existants restent SSH et fonctionnent.
 
 ---
 
