@@ -1,0 +1,22 @@
+# Fixture d'un ~/.ssh/config réaliste (aucun secret, aucune clé).
+Include config.d/*
+
+Host bastion
+    HostName bastion.example.test
+    User admin
+    Port 2222
+
+Host web-prod
+    HostName 203.0.113.10
+    ProxyJump bastion
+
+Host *.lab
+    User labadmin
+    IdentityFile ~/.ssh/id_lab_ed25519
+
+Match host *.corp
+    User corp
+
+Host *
+    ServerAliveInterval 30
+    User defaut

@@ -1,0 +1,18 @@
+[package]
+name = "core-import"
+description = "Import OpenSSH de Younji : ~/.ssh/config (Include, jokers) et known_hosts (sans dépendance à Tauri)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+tracing.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3"

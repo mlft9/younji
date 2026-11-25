@@ -1,6 +1,6 @@
 [workspace]
 # Les crates métier rejoignent le workspace à leur étape (ARCHITECTURE.md §2).
-members = ["src-tauri", "crates/core-rdp", "crates/core-ssh", "crates/core-term", "crates/core-vault"]
+members = ["src-tauri", "crates/core-import", "crates/core-rdp", "crates/core-ssh", "crates/core-term", "crates/core-vault"]
 resolver = "3"
 
 [workspace.package]
