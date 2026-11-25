@@ -227,6 +227,27 @@ impl VaultState {
         }
     }
 
+    /// Exporte une sauvegarde chiffrée (VLT-06). Le refus d'une phrase de passe qui ouvre le
+    /// coffre révèle si elle **est** le mot de passe maître : chaque export compte donc comme une
+    /// tentative et partage le compteur et le délai progressif du déverrouillage (SECURITE.md
+    /// §3.4), remis à zéro par le prochain déverrouillage réussi.
+    pub async fn export_backup(&self, passphrase: SecretString) -> Result<Vec<u8>, AppError> {
+        let mut failures = self.attempts.lock().await;
+        let delay = unlock_delay(*failures);
+        if !delay.is_zero() {
+            tokio::time::sleep(delay).await;
+        }
+        *failures = failures.saturating_add(1);
+        let shared = self.shared.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let guard = shared.lock()?;
+            let vault = guard.as_ref().ok_or(AppError::VAULT_LOCKED)?;
+            vault.export_backup(&passphrase).map_err(AppError::from)
+        })
+        .await
+        .map_err(|_| AppError::INTERNAL)?
+    }
+
     /// Verrouille : le coffre déchiffré est détruit (DEK et secrets effacés). Renvoie `true`
     /// s'il était déverrouillé.
     pub fn lock(&self, reason: LockReason) -> bool {
@@ -254,21 +275,6 @@ impl VaultState {
         let guard = self.shared.lock()?;
         let vault = guard.as_ref().ok_or(AppError::VAULT_LOCKED)?;
         f(vault)
-    }
-
-    /// Lit le coffre déverrouillé hors du fil appelant (opération coûteuse : Argon2id).
-    pub async fn read_blocking<T: Send + 'static>(
-        &self,
-        f: impl FnOnce(&Vault) -> Result<T, AppError> + Send + 'static,
-    ) -> Result<T, AppError> {
-        let shared = self.shared.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            let guard = shared.lock()?;
-            let vault = guard.as_ref().ok_or(AppError::VAULT_LOCKED)?;
-            f(vault)
-        })
-        .await
-        .map_err(|_| AppError::INTERNAL)?
     }
 
     /// Modifie les données et sauvegarde (rien ne change en cas d'échec), hors du fil appelant :

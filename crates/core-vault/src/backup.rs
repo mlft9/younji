@@ -219,6 +219,17 @@ mod tests {
             read_backup(&bytes, &secret(PASS)).unwrap_err(),
             VaultError::InvalidFile
         );
+        // Verrouillage automatique désactivé de fait (délai de 8 000 ans) ou permanent (0).
+        for minutes in [u32::MAX, 0, 7] {
+            let mut data = sample();
+            data.settings_mut().auto_lock_minutes = minutes;
+            let bytes = export_backup(&data, &secret(PASS)).unwrap();
+            assert_eq!(
+                read_backup(&bytes, &secret(PASS)).unwrap_err(),
+                VaultError::InvalidFile,
+                "{minutes}"
+            );
+        }
         let mut data = sample();
         data.hosts_mut()[0].identity_id = Some(uuid::Uuid::new_v4());
         let bytes = export_backup(&data, &secret(PASS)).unwrap();

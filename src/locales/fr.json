@@ -788,7 +788,7 @@
     "importSubmit": "Choisir le fichier et importer…",
     "imported": "Importé : {{hosts}} hôte(s), {{groups}} groupe(s), {{identities}} identité(s), {{keys}} clé(s), {{snippets}} snippet(s), {{knownHosts}} clé(s) d'hôte ; {{skipped}} entrée(s) déjà présente(s) ou refusée(s).",
     "replaceTitle": "Remplacer tout le coffre ?",
-    "replaceMessage": "Tout le contenu actuel du coffre (hôtes, identités, clés, snippets, clés d'hôte) sera remplacé par celui de la sauvegarde. La version précédente reste dans le fichier .bak jusqu'à la prochaine modification.",
+    "replaceMessage": "Tout le contenu actuel du coffre (hôtes, identités, clés, snippets) sera remplacé par celui de la sauvegarde, y compris les clés d'hôte de confiance : n'utilisez ce mode qu'avec votre propre sauvegarde. La version précédente reste dans le fichier .bak jusqu'à la prochaine modification.",
     "replaceConfirm": "Remplacer"
   }
 }

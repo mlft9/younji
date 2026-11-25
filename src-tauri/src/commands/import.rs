@@ -341,13 +341,18 @@ pub struct KnownHostsPreviewDto {
     skipped: Vec<KnownHostSkippedDto>,
 }
 
-fn read_text_bounded(path: &std::path::Path, max: u64) -> Result<String, AppError> {
+/// Lit au plus `max` octets d'un fichier **ordinaire** : type vérifié avant l'ouverture (un
+/// FIFO bloquerait) puis sur le descripteur ouvert, et lecture bornée quelle que soit la taille
+/// annoncée (un périphérique annonce 0, un fichier peut grossir entre-temps).
+fn read_bytes_bounded(path: &std::path::Path, max: u64) -> Result<Vec<u8>, AppError> {
     use std::io::Read;
-    // Fichier ordinaire seulement (un FIFO bloquerait l'ouverture).
     if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
         return Err(AppError::IMPORT_READ_FAILED);
     }
     let file = std::fs::File::open(path).map_err(|_| AppError::IMPORT_READ_FAILED)?;
+    if !file.metadata().is_ok_and(|m| m.is_file()) {
+        return Err(AppError::IMPORT_READ_FAILED);
+    }
     let mut bytes = Vec::new();
     file.take(max + 1)
         .read_to_end(&mut bytes)
@@ -355,7 +360,11 @@ fn read_text_bounded(path: &std::path::Path, max: u64) -> Result<String, AppErro
     if bytes.len() as u64 > max {
         return Err(AppError::IMPORT_TOO_LARGE);
     }
-    String::from_utf8(bytes).map_err(|_| AppError::IMPORT_READ_FAILED)
+    Ok(bytes)
+}
+
+fn read_text_bounded(path: &std::path::Path, max: u64) -> Result<String, AppError> {
+    String::from_utf8(read_bytes_bounded(path, max)?).map_err(|_| AppError::IMPORT_READ_FAILED)
 }
 
 /// Lit `~/.ssh/known_hosts` (ou un fichier choisi) et calcule la fusion avec les clés d'hôte
@@ -482,9 +491,7 @@ pub async fn backup_export(
         return Ok(false);
     };
     let path = picked.into_path().map_err(|_| AppError::DIALOG_FAILED)?;
-    let bytes = vault
-        .read_blocking(move |vault| vault.export_backup(&passphrase).map_err(Into::into))
-        .await?;
+    let bytes = vault.export_backup(passphrase).await?;
     tauri::async_runtime::spawn_blocking(move || write_private(&path, &bytes))
         .await
         .map_err(|_| AppError::INTERNAL)??;
@@ -585,6 +592,25 @@ fn apply_backup(
     }
 }
 
+/// Vérifie que l'algorithme, l'empreinte et la clé publique affichés de chaque clé de la
+/// sauvegarde correspondent bien à sa clé privée : une sauvegarde fabriquée ne doit pas pouvoir
+/// présenter une empreinte trompeuse (déploiement, comparaison avec `ssh-keygen -l`).
+fn check_backup_keys(backup: &VaultData) -> Result<(), AppError> {
+    for key in backup.keys() {
+        let private = core_ssh::auth::decode_stored_key(&key.private_key)
+            .map_err(|_| core_vault::VaultError::InvalidFile)?;
+        let derived = core_ssh::auth::prepare_import(&private)
+            .map_err(|_| core_vault::VaultError::InvalidFile)?;
+        if derived.algorithm != key.algorithm
+            || derived.fingerprint != key.fingerprint
+            || derived.public_key != key.public_key
+        {
+            return Err(core_vault::VaultError::InvalidFile.into());
+        }
+    }
+    Ok(())
+}
+
 /// Importe une sauvegarde choisie par l'utilisateur. `None` : choix annulé.
 #[tauri::command]
 pub async fn backup_import(
@@ -601,16 +627,10 @@ pub async fn backup_import(
         return Ok(None);
     };
     let backup = tauri::async_runtime::spawn_blocking(move || {
-        let meta = std::fs::metadata(&path).map_err(|_| AppError::IMPORT_READ_FAILED)?;
-        if !meta.is_file() {
-            return Err(AppError::IMPORT_READ_FAILED);
-        }
-        let size = meta.len();
-        if size > MAX_BACKUP_FILE {
-            return Err(AppError::IMPORT_TOO_LARGE);
-        }
-        let bytes = std::fs::read(&path).map_err(|_| AppError::IMPORT_READ_FAILED)?;
-        core_vault::backup::read_backup(&bytes, &passphrase).map_err(AppError::from)
+        let bytes = read_bytes_bounded(&path, MAX_BACKUP_FILE)?;
+        let backup = core_vault::backup::read_backup(&bytes, &passphrase)?;
+        check_backup_keys(&backup)?;
+        Ok::<_, AppError>(backup)
     })
     .await
     .map_err(|_| AppError::INTERNAL)??;
@@ -672,6 +692,55 @@ mod tests {
         assert!(!hosts[1].already_in_vault);
         assert_eq!(skipped.len(), 2);
         assert_eq!(skipped[1].entry, "Host bad");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reads_are_bounded_and_limited_to_regular_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f");
+        std::fs::write(&path, b"0123456789").unwrap();
+        assert_eq!(read_bytes_bounded(&path, 10).unwrap().len(), 10);
+        assert_eq!(
+            read_bytes_bounded(&path, 9),
+            Err(AppError::IMPORT_TOO_LARGE)
+        );
+        assert_eq!(
+            read_bytes_bounded(std::path::Path::new("/dev/zero"), 10),
+            Err(AppError::IMPORT_READ_FAILED)
+        );
+        assert_eq!(
+            read_bytes_bounded(dir.path(), 10),
+            Err(AppError::IMPORT_READ_FAILED)
+        );
+    }
+
+    #[test]
+    fn backup_keys_must_match_their_private_key() {
+        let mut data = VaultData::default();
+        let generated = core_ssh::generate_key(core_ssh::KeyKind::Ed25519).unwrap();
+        let other = core_ssh::generate_key(core_ssh::KeyKind::Ed25519).unwrap();
+        data.add_key(core_vault::NewKey {
+            name: "ok".into(),
+            algorithm: generated.algorithm.clone(),
+            fingerprint: generated.fingerprint.clone(),
+            public_key: generated.public_key.clone(),
+            private_key: generated.private_key,
+        })
+        .unwrap();
+        assert!(check_backup_keys(&data).is_ok());
+        data.add_key(core_vault::NewKey {
+            name: "menteuse".into(),
+            algorithm: generated.algorithm,
+            fingerprint: generated.fingerprint,
+            public_key: generated.public_key,
+            private_key: other.private_key,
+        })
+        .unwrap();
+        assert_eq!(
+            check_backup_keys(&data),
+            Err(AppError::from(core_vault::VaultError::InvalidFile))
+        );
     }
 
     #[test]

@@ -581,6 +581,11 @@ impl VaultData {
         {
             return Err(VaultError::InvalidFile);
         }
+        // Délai de verrouillage : une des valeurs proposées, jamais « jamais » ni zéro (un coffre
+        // ou une sauvegarde fabriqués ne doivent pas pouvoir désactiver le verrouillage).
+        if !AUTO_LOCK_CHOICES.contains(&self.settings.auto_lock_minutes) {
+            return Err(VaultError::InvalidFile);
+        }
         // Les snippets sont envoyés au terminal : leur contenu est revérifié à chaque chargement.
         for snippet in &self.snippets {
             let valid = clean_name(&snippet.name).is_ok_and(|n| n == snippet.name)
@@ -729,6 +734,12 @@ impl VaultData {
         merged.validate_all()?;
         *self = merged;
         Ok(counts)
+    }
+
+    /// Accès direct aux réglages, réservé aux tests (fabriquer un contenu invalide).
+    #[cfg(test)]
+    pub(crate) fn settings_mut(&mut self) -> &mut VaultSettings {
+        &mut self.settings
     }
 
     /// Accès direct aux hôtes, réservé aux tests (fabriquer un contenu invalide).

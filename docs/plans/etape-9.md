@@ -62,3 +62,11 @@ Aucune nouvelle dépendance externe (motifs `*`/`?` et analyse écrits à la mai
 4. **Conflits de `known_hosts` refusés**, même pour un hôte haché qu'on ne peut pas comparer en clair : une ligne hachée n'est ajoutée que si elle est absente à l'identique (limite : un hôte connu en clair et importé haché avec une autre clé ne peut pas être détecté ; documenté).
 5. **Fusion de sauvegarde** : les entrées existantes (même identifiant) gagnent ; réglages du coffre (délai de verrouillage) conservés ; clés d'hôte fusionnées avec la même règle de conflit.
 6. **Phrase de passe de sauvegarde** : même politique que le mot de passe maître (12 caractères, zxcvbn ≥ 3).
+
+## 7. Écarts en cours d'étape (revue de sécurité)
+
+- **Verrouillage automatique désactivable par une sauvegarde fabriquée (Moyenne)** : le délai de verrouillage n'était pas revalidé. Il doit désormais être une des valeurs proposées (1 à 60 min), au chargement du coffre comme à l'import ; sinon le fichier est refusé.
+- **Fichiers spéciaux (Faible)** : `Include`, `known_hosts` et sauvegarde ne lisent que des fichiers ordinaires (type vérifié avant l'ouverture puis sur le descripteur), avec une lecture bornée quelle que soit la taille annoncée.
+- **Oracle sur le mot de passe maître (Faible)** : chaque export de sauvegarde compte comme une tentative et partage le compteur et le délai progressif du déverrouillage (en plus de la boîte de dialogue qui précède toute dérivation).
+- **Empreintes trompeuses (Faible)** : l'algorithme, l'empreinte et la clé publique de chaque clé d'une sauvegarde sont recalculés depuis la clé privée et doivent correspondre.
+- **« Remplacer » fait confiance aux clés d'hôte de la sauvegarde (Faible, documenté)** : c'est une restauration ; le message de confirmation le dit et recommande de ne l'utiliser qu'avec sa propre sauvegarde. La fusion, elle, applique la règle de conflit.
