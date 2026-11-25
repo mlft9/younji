@@ -24,7 +24,8 @@ import { useSftpClient } from './useSftpClient';
 export function SftpTabPanel({ tab, active }: { tab: SessionTab; active: boolean }) {
   const { t } = useTranslation();
   const parent = useSessions((s) => s.tabs.find((x) => x.id === tab.parentTabId));
-  const connected = parent?.status === 'connected' ? parent.sessionId : null;
+  const connected =
+    parent?.status === 'connected' && parent.local === null ? parent.sessionId : null;
   const { sftpId, errorCode, opening, retry } = useSftpClient(connected);
   const [remotePath, setRemotePath] = useState<string | null>(tab.remoteCwd);
   const [root, setRoot] = useState<LocalRootRef | null>(null);

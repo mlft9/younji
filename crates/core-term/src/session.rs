@@ -16,7 +16,7 @@ use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 
 use crate::error::TermError;
 use crate::profiles::LocalProfile;
@@ -33,6 +33,8 @@ pub const HIGH_WATERMARK: usize = 2 * 1024 * 1024;
 const READ_CHUNK: usize = 32 * 1024;
 /// Saisies en attente d'écriture au plus.
 const WRITE_QUEUE: usize = 64;
+/// Fréquence de surveillance du processus.
+pub const WAIT_POLL: Duration = Duration::from_millis(50);
 /// Délai laissé à la lecture pour vider le PTY après la fin du processus.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -104,7 +106,6 @@ pub struct LocalSession {
     shared: Arc<Shared>,
     writer: Mutex<Option<SyncSender<Vec<u8>>>>,
     master: Arc<Mutex<Option<Box<dyn MasterPty + Send>>>>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 }
 
 impl std::fmt::Debug for LocalSession {
@@ -139,15 +140,20 @@ impl LocalSession {
         let mut child = pair.slave.spawn_command(command).map_err(spawn_failed)?;
         // Sans cette fermeture, la lecture ne verrait jamais la fin du PTY sous Linux.
         drop(pair.slave);
-        let killer = child.clone_killer();
-        let reader = pair.master.try_clone_reader().map_err(|e| {
-            let _ = child.kill();
-            spawn_failed(e)
-        })?;
-        let writer = pair.master.take_writer().map_err(|e| {
-            let _ = child.kill();
-            spawn_failed(e)
-        })?;
+        let reader = match pair.master.try_clone_reader() {
+            Ok(reader) => reader,
+            Err(error) => {
+                let _ = child.kill();
+                return Err(spawn_failed(error));
+            }
+        };
+        let writer = match pair.master.take_writer() {
+            Ok(writer) => writer,
+            Err(error) => {
+                let _ = child.kill();
+                return Err(spawn_failed(error));
+            }
+        };
 
         let shared = Arc::new(Shared {
             unacked: Mutex::new(0),
@@ -156,43 +162,49 @@ impl LocalSession {
             finished: AtomicBool::new(false),
         });
         let master = Arc::new(Mutex::new(Some(pair.master)));
-
         let (drained_tx, drained_rx) = mpsc::channel::<()>();
+
+        // Le fil d'attente est le **seul** propriétaire du processus : lui seul le tue, avant de
+        // l'avoir récupéré. Aucun signal ne peut donc viser un PID déjà libéré et réattribué.
+        let wait_shared = shared.clone();
+        let wait_master = master.clone();
+        let wait_sink = sink.clone();
+        std::thread::Builder::new()
+            .name("younji-term-wait".into())
+            .spawn(move || {
+                wait_loop(
+                    child,
+                    &wait_shared,
+                    &wait_master,
+                    wait_sink.as_ref(),
+                    &drained_rx,
+                );
+            })
+            .map_err(spawn_failed)?;
+
+        // À partir d'ici, une erreur demande l'arrêt au fil d'attente (qui tue le processus).
+        let abort = |error: std::io::Error| {
+            shared.closed.store(true, Ordering::Release);
+            spawn_failed(error)
+        };
         let reader_shared = shared.clone();
-        let reader_sink = sink.clone();
+        let reader_sink = sink;
         std::thread::Builder::new()
             .name("younji-term-read".into())
             .spawn(move || read_loop(reader, &reader_shared, reader_sink.as_ref(), &drained_tx))
-            .map_err(spawn_failed)?;
+            .map_err(abort)?;
 
         let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(WRITE_QUEUE);
         std::thread::Builder::new()
             .name("younji-term-write".into())
             .spawn(move || write_loop(writer, &write_rx))
-            .map_err(spawn_failed)?;
-
-        let wait_shared = shared.clone();
-        let wait_master = master.clone();
-        std::thread::Builder::new()
-            .name("younji-term-wait".into())
-            .spawn(move || {
-                let code = child.wait().ok().map(|status| status.exit_code());
-                // Fermer le PTY termine la lecture (indispensable sous Windows : ConPTY ne
-                // signale la fin qu'une fois fermé), après un court délai pour vider la sortie.
-                let _ = drained_rx.recv_timeout(DRAIN_TIMEOUT);
-                if let Ok(mut master) = wait_master.lock() {
-                    master.take();
-                }
-                finish(&wait_shared, sink.as_ref(), code);
-            })
-            .map_err(spawn_failed)?;
+            .map_err(abort)?;
 
         tracing::debug!(kind = profile.kind.as_str(), "terminal local lancé");
         Ok(Self {
             shared,
             writer: Mutex::new(Some(write_tx)),
             master,
-            killer: Mutex::new(killer),
         })
     }
 
@@ -232,16 +244,15 @@ impl LocalSession {
         self.shared.wake();
     }
 
-    /// Ferme la session : le processus est tué, l'écriture arrêtée, la lecture réveillée.
+    /// Ferme la session : l'écriture s'arrête, la lecture est réveillée et le fil d'attente tue
+    /// le processus (SIGHUP puis SIGKILL sous Linux, `TerminateProcess` sous Windows) dans les
+    /// [`WAIT_POLL`] qui suivent, puis ferme le PTY.
     pub fn close(&self) {
         if self.shared.closed.swap(true, Ordering::AcqRel) {
             return;
         }
         if let Ok(mut writer) = self.writer.lock() {
             writer.take();
-        }
-        if let Ok(mut killer) = self.killer.lock() {
-            let _ = killer.kill();
         }
         self.shared.wake();
         tracing::debug!("terminal local fermé");
@@ -257,6 +268,43 @@ impl Drop for LocalSession {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+/// Attend la fin du processus, le tue si la fermeture est demandée, puis ferme le PTY et signale
+/// la fin.
+fn wait_loop(
+    mut child: Box<dyn Child + Send + Sync>,
+    shared: &Shared,
+    master: &Mutex<Option<Box<dyn MasterPty + Send>>>,
+    sink: &dyn TermSink,
+    drained: &Receiver<()>,
+) {
+    let mut kill_sent = false;
+    let code = loop {
+        if shared.closed.load(Ordering::Acquire) && !kill_sent {
+            // `Child::kill` de portable-pty : SIGHUP, court délai, puis SIGKILL (Unix) ;
+            // TerminateProcess (Windows). Le processus n'a pas encore été récupéré : son PID
+            // est toujours le sien.
+            let _ = child.kill();
+            kill_sent = true;
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status.exit_code()),
+            Ok(None) => std::thread::sleep(WAIT_POLL),
+            Err(_) => break None,
+        }
+    };
+    // Laisser la lecture vider la sortie (sauf fermeture demandée), puis débloquer un lecteur en
+    // attente d'acquittement et fermer le PTY hors du verrou (ConPTY peut attendre en se
+    // fermant).
+    if !shared.closed.load(Ordering::Acquire) {
+        let _ = drained.recv_timeout(DRAIN_TIMEOUT);
+    }
+    shared.closed.store(true, Ordering::Release);
+    shared.wake();
+    let pty = master.lock().ok().and_then(|mut m| m.take());
+    drop(pty);
+    finish(shared, sink, code);
 }
 
 /// Signale la fin une seule fois.
@@ -436,6 +484,21 @@ mod tests {
         assert!(sink.wait_for(|s| s.events.lock().unwrap().len() == 1));
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(sink.events.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn closing_kills_a_program_that_ignores_sighup() {
+        let sink = Arc::new(Collect::default());
+        let session = LocalSession::spawn(
+            &LocalProfile::for_test("/bin/sh", &["-c", "trap '' HUP; echo pret; sleep 60"]),
+            size(),
+            sink.clone(),
+        )
+        .unwrap();
+        assert!(sink.wait_for(|s| s.text().contains("pret")));
+        session.close();
+        assert!(sink.wait_for(|s| s.events.lock().unwrap().len() == 1));
+        assert!(session.is_finished());
     }
 
     #[test]

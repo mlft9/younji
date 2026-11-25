@@ -443,7 +443,9 @@ export class TerminalSession {
     if (this.endedGeneration === generation) return;
     this.sessionId = sessionId;
     this.transport = transport;
-    this.update({ sessionId });
+    // L'identifiant d'un terminal local n'est pas publié : `tab.sessionId` désigne toujours une
+    // session SSH (SFTP), et les deux registres du cœur sont numérotés indépendamment.
+    this.update({ sessionId: origin.local ? null : sessionId });
     this.input = new InputQueue(
       (data, binary) => transport.write(data, binary),
       () => undefined,
