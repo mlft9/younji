@@ -260,6 +260,11 @@ impl Reader<'_> {
 }
 
 fn read_bounded(path: &Path) -> Result<String, SkipReason> {
+    // Type vérifié **avant** l'ouverture : ouvrir un FIFO bloquerait jusqu'à l'arrivée d'un
+    // écrivain, et un périphérique (`/dev/zero`) ne finirait jamais.
+    if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Err(SkipReason::Unreadable);
+    }
     let file = std::fs::File::open(path).map_err(|_| SkipReason::Unreadable)?;
     let meta = file.metadata().map_err(|_| SkipReason::Unreadable)?;
     if !meta.is_file() {
@@ -717,6 +722,24 @@ mod tests {
             entry: "Host b".into(),
             reason: SkipReason::Duplicate,
         }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn special_files_are_not_opened() {
+        let (_home, report) = parse("Include /dev/zero\nHost a\n  User u\n");
+        assert_eq!(report.hosts.len(), 1);
+        // Le périphérique n'est jamais ouvert : l'Include est signalé, le reste est lu.
+        assert!(
+            report
+                .skipped
+                .iter()
+                .any(|s| s.entry == "Include /dev/zero")
+        );
+        assert_eq!(
+            read_bounded(Path::new("/dev/zero")),
+            Err(SkipReason::Unreadable)
+        );
     }
 
     #[test]

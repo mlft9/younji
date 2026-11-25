@@ -343,6 +343,10 @@ pub struct KnownHostsPreviewDto {
 
 fn read_text_bounded(path: &std::path::Path, max: u64) -> Result<String, AppError> {
     use std::io::Read;
+    // Fichier ordinaire seulement (un FIFO bloquerait l'ouverture).
+    if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Err(AppError::IMPORT_READ_FAILED);
+    }
     let file = std::fs::File::open(path).map_err(|_| AppError::IMPORT_READ_FAILED)?;
     let mut bytes = Vec::new();
     file.take(max + 1)
@@ -597,9 +601,11 @@ pub async fn backup_import(
         return Ok(None);
     };
     let backup = tauri::async_runtime::spawn_blocking(move || {
-        let size = std::fs::metadata(&path)
-            .map_err(|_| AppError::IMPORT_READ_FAILED)?
-            .len();
+        let meta = std::fs::metadata(&path).map_err(|_| AppError::IMPORT_READ_FAILED)?;
+        if !meta.is_file() {
+            return Err(AppError::IMPORT_READ_FAILED);
+        }
+        let size = meta.len();
         if size > MAX_BACKUP_FILE {
             return Err(AppError::IMPORT_TOO_LARGE);
         }
