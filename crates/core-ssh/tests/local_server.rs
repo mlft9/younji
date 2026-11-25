@@ -70,6 +70,8 @@ struct TestServer {
     exec_command: Arc<Mutex<Option<String>>>,
     stdin: Arc<Mutex<Vec<u8>>>,
     exec_channel: Option<ChannelId>,
+    /// Pilotage de la dernière session ouverte (pour ouvrir des canaux vers le client).
+    server_handle: Arc<Mutex<Option<server::Handle>>>,
     stage: usize,
 }
 
@@ -185,8 +187,11 @@ impl server::Handler for TestServer {
         &mut self,
         _channel: Channel<Msg>,
         reply: server::ChannelOpenHandle,
-        _session: &mut Session,
+        session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if let Ok(mut handle) = self.server_handle.lock() {
+            *handle = Some(session.handle());
+        }
         reply.accept().await;
         Ok(())
     }
@@ -277,6 +282,7 @@ struct Fixture {
     exec_command: Arc<Mutex<Option<String>>>,
     stdin: Arc<Mutex<Vec<u8>>>,
     known_hosts: Arc<KnownHosts>,
+    server_handle: Arc<Mutex<Option<server::Handle>>>,
     _dir: tempfile::TempDir,
 }
 
@@ -307,6 +313,7 @@ async fn start_server_with(options: Options) -> Fixture {
     let answers = Arc::default();
     let exec_command = Arc::default();
     let stdin = Arc::default();
+    let server_handle = Arc::default();
     let handler = TestServer {
         options,
         auth_attempts: auth_attempts.clone(),
@@ -314,6 +321,7 @@ async fn start_server_with(options: Options) -> Fixture {
         exec_command: Arc::clone(&exec_command),
         stdin: Arc::clone(&stdin),
         exec_channel: None,
+        server_handle: Arc::clone(&server_handle),
         stage: 0,
     };
     tokio::spawn(async move {
@@ -337,6 +345,7 @@ async fn start_server_with(options: Options) -> Fixture {
         exec_command,
         stdin,
         known_hosts,
+        server_handle,
         _dir: dir,
     }
 }
@@ -626,6 +635,44 @@ async fn input_resize_and_remote_exit() {
         client.next_event().await,
         disconnected(SshError::SessionEnded)
     );
+}
+
+#[tokio::test]
+async fn channels_opened_by_the_server_are_refused() {
+    // Un serveur malveillant tente d'ouvrir des canaux vers le poste : redirection vers son
+    // réseau local, transfert d'agent, X11, nouveau shell. Younji n'en demande aucun.
+    let fixture = start_server(None).await;
+    let mut client = Client::connect(&fixture, password(PASSWORD));
+    client.accept_and_connect().await;
+    let server = fixture.server_handle.lock().unwrap().clone().unwrap();
+    assert!(server.channel_open_session().await.is_err());
+    assert!(server.channel_open_agent().await.is_err());
+    assert!(
+        server
+            .channel_open_direct_tcpip("127.0.0.1", 22, "203.0.113.5", 1)
+            .await
+            .is_err()
+    );
+    assert!(
+        server
+            .channel_open_forwarded_tcpip("127.0.0.1", 8080, "203.0.113.5", 1)
+            .await
+            .is_err()
+    );
+    assert!(server.channel_open_x11("203.0.113.5", 6000).await.is_err());
+    assert!(
+        server
+            .channel_open_direct_streamlocal("/tmp/socket")
+            .await
+            .is_err()
+    );
+    // La session elle-même continue de fonctionner.
+    client
+        .handle
+        .write(b"echo toujours la".to_vec())
+        .await
+        .unwrap();
+    client.wait_output("echo toujours la").await;
 }
 
 #[tokio::test]
