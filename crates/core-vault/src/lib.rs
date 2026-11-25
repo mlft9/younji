@@ -13,7 +13,8 @@ mod store;
 
 pub use error::VaultError;
 pub use model::{
-    AUTO_LOCK_CHOICES, EntryId, Group, Host, HostInput, Identity, IdentityInput, NewKey,
-    PasswordChange, Snippet, SnippetInput, StoredKey, VaultData, VaultSettings, snippet_variables,
+    AUTO_LOCK_CHOICES, EntryId, Group, Host, HostInput, HostProtocol, Identity, IdentityInput,
+    NewKey, PasswordChange, RdpResolution, Snippet, SnippetInput, StoredKey, VaultData,
+    VaultSettings, snippet_variables,
 };
 pub use store::{Vault, VaultFileStatus, backup_path, file_status};

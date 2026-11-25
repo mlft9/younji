@@ -381,7 +381,7 @@ mod tests {
 
     use super::*;
     use crate::format::SALT_LEN;
-    use crate::model::{HostInput, IdentityInput, PasswordChange};
+    use crate::model::{HostInput, HostProtocol, IdentityInput, PasswordChange};
 
     const PASSWORD: &str = "cheval agrafe batterie correct 42";
     const OTHER: &str = "Tq9#mZ2!vLp8@xR-nouveau";
@@ -411,6 +411,7 @@ mod tests {
             group_id: None,
             tags: vec![],
             notes: "notes privées".into(),
+            protocol: HostProtocol::default(),
         })
         .unwrap();
         data

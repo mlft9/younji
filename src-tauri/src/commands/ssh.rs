@@ -323,6 +323,10 @@ fn host_target(
     host_id: EntryId,
 ) -> Result<(Target, Option<Credentials>), AppError> {
     let host = data.host(host_id)?;
+    // Un hôte RDP ne s'ouvre jamais en SSH (ni session, ni déploiement de clé).
+    if host.protocol.is_rdp() {
+        return Err(AppError::HOST_NOT_SSH);
+    }
     let Some(identity_id) = host.identity_id else {
         let target = Target::new(&host.address, u32::from(host.port), &host.username)?;
         return Ok((target, None));
@@ -608,7 +612,7 @@ mod tests {
 
     #[test]
     fn host_credentials_follow_the_identity() {
-        use core_vault::{HostInput, IdentityInput, NewKey, PasswordChange};
+        use core_vault::{HostInput, HostProtocol, IdentityInput, NewKey, PasswordChange};
         use russh::keys::{Algorithm, PrivateKey};
 
         let mut data = VaultData::default();
@@ -646,6 +650,7 @@ mod tests {
                 group_id: None,
                 tags: vec![],
                 notes: String::new(),
+                protocol: HostProtocol::default(),
             })
             .unwrap()
         };
@@ -760,7 +765,7 @@ mod tests {
 
     #[test]
     fn deploy_params_come_from_the_vault() {
-        use core_vault::{HostInput, IdentityInput, NewKey, PasswordChange};
+        use core_vault::{HostInput, HostProtocol, IdentityInput, NewKey, PasswordChange};
 
         let mut data = VaultData::default();
         let generated = core_ssh::generate_key(core_ssh::KeyKind::Ed25519).unwrap();
@@ -794,6 +799,7 @@ mod tests {
                 group_id: None,
                 tags: vec![],
                 notes: String::new(),
+                protocol: HostProtocol::default(),
             })
             .unwrap()
         };
@@ -826,6 +832,32 @@ mod tests {
         assert_eq!(
             deploy_params(&data, unknown_key, known()).unwrap_err(),
             AppError::from(VaultError::EntryNotFound)
+        );
+        // Un hôte RDP ne sert jamais de cible SSH (session ou déploiement).
+        let rdp = data
+            .upsert_host(HostInput {
+                id: None,
+                name: "w".into(),
+                address: "win.lab".into(),
+                port: 3389,
+                username: "u".into(),
+                identity_id: Some(identity),
+                group_id: None,
+                tags: vec![],
+                notes: String::new(),
+                protocol: HostProtocol::Rdp {
+                    domain: String::new(),
+                    resolution: core_vault::RdpResolution::Fullscreen {},
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            deploy_params(&data, request(rdp, None), known()).unwrap_err(),
+            AppError::HOST_NOT_SSH
+        );
+        assert_eq!(
+            host_credentials(&data, rdp).unwrap_err(),
+            AppError::HOST_NOT_SSH
         );
     }
 }

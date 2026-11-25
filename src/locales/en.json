@@ -292,10 +292,12 @@
       "known_hosts_too_large": "Too many host keys stored.",
       "password_mismatch": "The two passwords do not match.",
       "current_password_required": "Enter the current password.",
-      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart."
+      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart.",
+      "invalid_rdp": "Invalid RDP settings: domain (letters, digits, “.”, “-”, “_”) or resolution out of range."
     },
     "book": {
-      "no_identity": "This host has no saved identity."
+      "no_identity": "This host has no saved identity.",
+      "not_ssh": "This is an RDP host: it cannot be opened over SSH."
     },
     "settings": {
       "invalid": "Invalid setting.",

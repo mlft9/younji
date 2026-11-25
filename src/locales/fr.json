@@ -292,10 +292,12 @@
       "known_hosts_too_large": "Trop de clés d'hôte enregistrées.",
       "password_mismatch": "Les deux mots de passe ne sont pas identiques.",
       "current_password_required": "Saisissez le mot de passe actuel.",
-      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez."
+      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez.",
+      "invalid_rdp": "Réglages RDP invalides : domaine (lettres, chiffres, « . », « - », « _ ») ou résolution hors limites."
     },
     "book": {
-      "no_identity": "Cet hôte n'a pas d'identité enregistrée."
+      "no_identity": "Cet hôte n'a pas d'identité enregistrée.",
+      "not_ssh": "Cet hôte est un hôte RDP : il ne s'ouvre pas en SSH."
     },
     "settings": {
       "invalid": "Paramètre invalide.",

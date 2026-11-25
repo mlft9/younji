@@ -37,6 +37,8 @@ impl AppError {
     pub const VAULT_LOCKED: Self = Self::new("vault.locked");
     /// Hôte sans identité : la connexion directe depuis le carnet est impossible.
     pub const HOST_WITHOUT_IDENTITY: Self = Self::new("book.no_identity");
+    /// Hôte RDP utilisé pour une opération SSH.
+    pub const HOST_NOT_SSH: Self = Self::new("book.not_ssh");
     /// Paramètres hors des valeurs admises.
     pub const SETTINGS_INVALID: Self = Self::new("settings.invalid");
     /// `settings.json` ne peut pas être écrit.
@@ -69,6 +71,7 @@ impl AppError {
         Self::INTERNAL,
         Self::VAULT_LOCKED,
         Self::HOST_WITHOUT_IDENTITY,
+        Self::HOST_NOT_SSH,
         Self::SETTINGS_INVALID,
         Self::SETTINGS_IO,
         Self::EXPORT_FAILED,
