@@ -34,6 +34,9 @@ pub enum RdpError {
     /// Fichier temporaire impossible à créer.
     #[error("fichier temporaire impossible à créer")]
     TempFileFailed,
+    /// Un lancement vers ce serveur est déjà en cours (identifiant temporaire encore présent).
+    #[error("lancement déjà en cours")]
+    Busy,
     /// Le client n'a pas pu être lancé.
     #[error("lancement du client impossible")]
     LaunchFailed,
@@ -41,7 +44,7 @@ pub enum RdpError {
 
 impl RdpError {
     /// Toutes les variantes (test des traductions).
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::InvalidAddress,
         Self::InvalidPort,
         Self::InvalidUsername,
@@ -52,6 +55,7 @@ impl RdpError {
         Self::PasswordRequired,
         Self::CredentialFailed,
         Self::TempFileFailed,
+        Self::Busy,
         Self::LaunchFailed,
     ];
 
@@ -68,6 +72,7 @@ impl RdpError {
             Self::PasswordRequired => "rdp.password_required",
             Self::CredentialFailed => "rdp.credential_failed",
             Self::TempFileFailed => "rdp.temp_file_failed",
+            Self::Busy => "rdp.busy",
             Self::LaunchFailed => "rdp.launch_failed",
         }
     }

@@ -28,9 +28,10 @@ pub fn freerdp_args(target: &RdpTarget, with_password: bool) -> Vec<OsString> {
         Resolution::Fullscreen => args.push("/f".into()),
         Resolution::Fixed { width, height } => args.push(format!("/size:{width}x{height}").into()),
     }
-    // Premier certificat accepté et mémorisé, changement refusé : même règle que les clés
+    // Premier certificat accepté et mémorisé, changement refusé **sans question** (`deny`) : le
+    // refus ne dépend jamais de ce qui est lu sur l'entrée standard. Même règle que les clés
     // d'hôte SSH (TOFU). Jamais `/cert:ignore`.
-    args.push("/cert:tofu".into());
+    args.push("/cert:tofu,deny".into());
     args.push("+clipboard".into());
     if with_password {
         args.push("/from-stdin:force".into());
@@ -38,8 +39,11 @@ pub fn freerdp_args(target: &RdpTarget, with_password: bool) -> Vec<OsString> {
     args
 }
 
-/// Contenu de l'entrée standard : FreeRDP demande le domaine s'il n'en a aucun (ni `/d:`, ni
-/// `DOMAINE\utilisateur`, ni `utilisateur@domaine`), puis le mot de passe, une ligne chacun.
+/// Contenu de l'entrée standard : FreeRDP 3 demande le domaine s'il n'en a aucun (ni `/d:`, ni
+/// `DOMAINE\utilisateur` ; la forme `utilisateur@domaine` ne remplit pas le domaine), puis le
+/// mot de passe, une ligne chacun. Si une version ne pose pas la question du domaine, la ligne
+/// vide est lue comme mot de passe : l'authentification échoue, sans fuite (le reste du tube
+/// n'est jamais lu).
 pub fn freerdp_stdin(
     target: &RdpTarget,
     password: &SecretString,
@@ -49,7 +53,7 @@ pub fn freerdp_stdin(
         return Err(RdpError::InvalidPassword);
     }
     let mut input = Zeroizing::new(Vec::with_capacity(secret.len() + 2));
-    if target.domain().is_empty() && !target.username_has_domain() {
+    if target.domain().is_empty() && !target.username().contains('\\') {
         input.push(b'\n');
     }
     input.extend_from_slice(secret.as_bytes());
@@ -79,7 +83,7 @@ mod tests {
                 "/u:alice",
                 "/d:LAB",
                 "/f",
-                "/cert:tofu",
+                "/cert:tofu,deny",
                 "+clipboard",
                 "/from-stdin:force"
             ]
@@ -129,7 +133,7 @@ mod tests {
         );
         assert_eq!(
             &*freerdp_stdin(&target("alice@lab", ""), &pw).unwrap(),
-            b"s3cret pass\n"
+            b"\ns3cret pass\n"
         );
     }
 

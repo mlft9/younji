@@ -9,6 +9,7 @@
 //!
 //! Le mot de passe n'apparaît jamais dans les arguments ni dans l'environnement du processus.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -36,8 +37,47 @@ pub enum RdpClient {
     FreeRdp(PathBuf),
 }
 
+/// Identifiants temporaires que Younji a écrits et pas encore supprimés (cibles en minuscules).
+/// Un second lancement vers la même cible est refusé tant que le premier n'a pas nettoyé :
+/// sinon il prendrait l'identifiant du premier (autre compte) pour celui de l'utilisateur.
+#[derive(Debug, Default)]
+pub struct ActiveCredentials(Mutex<HashSet<String>>);
+
+impl ActiveCredentials {
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn claim(&self, target: &str) -> Result<(), RdpError> {
+        let mut active = self.0.lock().map_err(|_| RdpError::Busy)?;
+        if active.insert(target.to_ascii_lowercase()) {
+            Ok(())
+        } else {
+            Err(RdpError::Busy)
+        }
+    }
+
+    fn release(&self, target: &str) {
+        if let Ok(mut active) = self.0.lock() {
+            active.remove(&target.to_ascii_lowercase());
+        }
+    }
+}
+
+/// Supprime les identifiants `TERMSRV/*` laissés par une exécution interrompue de Younji
+/// (reconnus à leur marqueur ; ceux de l'utilisateur ne sont jamais touchés). Sans effet hors
+/// de Windows. Renvoie leur nombre.
+pub fn cleanup_stale_credentials() -> usize {
+    #[cfg(windows)]
+    {
+        crate::wincred::cleanup_stale()
+    }
+    #[cfg(not(windows))]
+    {
+        0
+    }
+}
+
 /// Cherche le client du système : `%SystemRoot%\System32\mstsc.exe` sous Windows ; sous les
-/// autres systèmes, `xfreerdp3` puis `xfreerdp` dans les seuls dossiers **absolus** du `PATH`.
+/// autres systèmes, `xfreerdp3` (FreeRDP 3, seul à connaître `/cert:tofu,deny` et
+/// `/from-stdin:force`) dans les seuls dossiers **absolus** du `PATH`.
 pub fn find_client() -> Result<RdpClient, RdpError> {
     #[cfg(windows)]
     {
@@ -71,11 +111,9 @@ pub(crate) fn find_freerdp(path: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
                 .collect()
         })
         .unwrap_or_default();
-    ["xfreerdp3", "xfreerdp"].iter().find_map(|name| {
-        dirs.iter()
-            .map(|dir| dir.join(name))
-            .find(|candidate| is_executable(candidate))
-    })
+    dirs.iter()
+        .map(|dir| dir.join("xfreerdp3"))
+        .find(|candidate| is_executable(candidate))
 }
 
 #[cfg_attr(windows, allow(dead_code))]
@@ -99,6 +137,7 @@ struct Cleanup {
     rdp_file: Option<TempPath>,
     #[cfg_attr(not(windows), allow(dead_code))]
     credential: Option<String>,
+    active: Arc<ActiveCredentials>,
 }
 
 impl Cleanup {
@@ -108,13 +147,10 @@ impl Cleanup {
         {
             tracing::warn!("fichier .rdp temporaire non supprimé");
         }
-        #[cfg(windows)]
         if let Some(target) = self.credential.take() {
+            #[cfg(windows)]
             crate::wincred::delete(&target);
-        }
-        #[cfg(not(windows))]
-        {
-            self.credential = None;
+            self.active.release(&target);
         }
     }
 }
@@ -170,20 +206,23 @@ impl RdpProcess {
 
 /// Lance le client pour la cible. `password` : mot de passe de l'identité (facultatif sous
 /// Windows, où mstsc le demande lui-même ; obligatoire avec FreeRDP). `temp_dir` : dossier
-/// privé de l'application pour le fichier `.rdp`.
+/// privé de l'application pour le fichier `.rdp`. `active` : identifiants temporaires en cours,
+/// partagés par tous les lancements de l'application.
 pub fn launch(
     client: &RdpClient,
     target: &RdpTarget,
     password: Option<&SecretString>,
     temp_dir: &Path,
+    active: &Arc<ActiveCredentials>,
 ) -> Result<RdpProcess, RdpError> {
     let (child, cleanup, existing_credential) = match client {
-        RdpClient::Mstsc(program) => spawn_mstsc(program, target, password, temp_dir)?,
+        RdpClient::Mstsc(program) => spawn_mstsc(program, target, password, temp_dir, active)?,
         RdpClient::FreeRdp(program) => (
             spawn_freerdp(program, target, password)?,
             Cleanup {
                 rdp_file: None,
                 credential: None,
+                active: active.clone(),
             },
             false,
         ),
@@ -275,26 +314,35 @@ fn spawn_mstsc(
     target: &RdpTarget,
     password: Option<&SecretString>,
     temp_dir: &Path,
+    active: &Arc<ActiveCredentials>,
 ) -> Result<(Child, Cleanup, bool), RdpError> {
     let mut cleanup = Cleanup {
         rdp_file: Some(write_rdp_file(target, temp_dir)?),
         credential: None,
+        active: active.clone(),
     };
     let mut existing = false;
     #[cfg(windows)]
     if let Some(password) = password {
+        use crate::wincred::Existing;
         let name = crate::wincred::target_name(target.address());
-        if crate::wincred::exists(&name) {
-            // Identifiant de l'utilisateur : ni écrasé, ni supprimé.
-            existing = true;
-        } else {
-            let username = if target.domain().is_empty() {
-                target.username().to_owned()
-            } else {
-                format!("{}\\{}", target.domain(), target.username())
-            };
-            crate::wincred::write(&name, &username, password)?;
-            cleanup.credential = Some(name);
+        active.claim(&name)?;
+        match crate::wincred::existing(&name) {
+            Existing::User => {
+                // Identifiant de l'utilisateur : ni écrasé, ni supprimé.
+                active.release(&name);
+                existing = true;
+            }
+            // Aucun, ou reste d'une exécution interrompue de Younji : (ré)écrit puis supprimé.
+            Existing::None | Existing::Younji => {
+                cleanup.credential = Some(name.clone());
+                let username = if target.domain().is_empty() || target.username_has_domain() {
+                    target.username().to_owned()
+                } else {
+                    format!("{}\\{}", target.domain(), target.username())
+                };
+                crate::wincred::write(&name, &username, password)?;
+            }
         }
     }
     let file = cleanup
@@ -404,7 +452,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let client = RdpClient::FreeRdp(fake_client(dir.path(), "xfreerdp3"));
         let password = SecretString::from("Mot-De-Passe-Unique-42");
-        let process = launch(&client, &target(), Some(&password), dir.path()).unwrap();
+        let process = launch(
+            &client,
+            &target(),
+            Some(&password),
+            dir.path(),
+            &Arc::default(),
+        )
+        .unwrap();
         let stdin = wait_for(&dir.path().join("stdin"));
         assert_eq!(stdin, "Mot-De-Passe-Unique-42\n");
         let args = wait_for(&dir.path().join("args"));
@@ -422,7 +477,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let client = RdpClient::FreeRdp(fake_client(dir.path(), "xfreerdp"));
         assert_eq!(
-            launch(&client, &target(), None, dir.path()).unwrap_err(),
+            launch(&client, &target(), None, dir.path(), &Arc::default()).unwrap_err(),
             RdpError::PasswordRequired
         );
     }
@@ -432,7 +487,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let rdp_dir = dir.path().join("rdp");
         let client = RdpClient::Mstsc(fake_client(dir.path(), "mstsc"));
-        let process = launch(&client, &target(), None, &rdp_dir).unwrap();
+        let process = launch(&client, &target(), None, &rdp_dir, &Arc::default()).unwrap();
         let args = wait_for(&dir.path().join("args"));
         let file = PathBuf::from(args.trim());
         assert!(file.starts_with(&rdp_dir));
@@ -457,7 +512,14 @@ mod tests {
         let program = dir.path().join("quick");
         std::fs::write(&program, "#!/bin/sh\nexit 0\n").unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let process = launch(&RdpClient::Mstsc(program), &target(), None, dir.path()).unwrap();
+        let process = launch(
+            &RdpClient::Mstsc(program),
+            &target(),
+            None,
+            dir.path(),
+            &Arc::default(),
+        )
+        .unwrap();
         let start = Instant::now();
         while process.is_running() && start.elapsed() < Duration::from_secs(5) {
             std::thread::sleep(Duration::from_millis(50));
@@ -470,7 +532,8 @@ mod tests {
     #[test]
     fn freerdp_is_searched_in_absolute_path_entries_only() {
         let dir = tempfile::tempdir().unwrap();
-        let found = fake_client(dir.path(), "xfreerdp");
+        fake_client(dir.path(), "xfreerdp");
+        let found = fake_client(dir.path(), "xfreerdp3");
         let path =
             std::env::join_paths([PathBuf::from("relative"), dir.path().to_path_buf()]).unwrap();
         assert_eq!(find_freerdp(Some(&path)), Some(found));
@@ -479,6 +542,15 @@ mod tests {
             None
         );
         assert_eq!(find_freerdp(None), None);
+    }
+
+    #[test]
+    fn a_target_cannot_be_claimed_twice() {
+        let active = ActiveCredentials::default();
+        active.claim("TERMSRV/srv").unwrap();
+        assert_eq!(active.claim("termsrv/SRV"), Err(RdpError::Busy));
+        active.release("TERMSRV/srv");
+        assert!(active.claim("TERMSRV/srv").is_ok());
     }
 
     #[test]

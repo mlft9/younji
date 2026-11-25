@@ -1,4 +1,4 @@
-# Recette manuelle — étapes 0 à 5
+# Recette manuelle — étapes 0 à 7
 
 Fiche de test du porteur : ce qu'il faut installer, puis les tests à dérouler, étape par étape.
 Coche au fur et à mesure, note ce qui coince (capture d'écran si possible), puis envoie tes retours avec `/retour`.
@@ -187,6 +187,55 @@ Connecté en terminal sur `testpwd` :
 - [ ] SNP-03 : `service` = `cron` vers 2 sessions cochées sur 3 : seules ces deux l'exécutent ; le bouton indique « Exécuter dans 2 sessions ».
 - [ ] Snippet sur deux lignes (`whoami` / `hostname`) : avertissement « plusieurs lignes » ; avec « Insérer », bash n'exécute rien avant Entrée.
 - [ ] Langue EN : sections Snippets, diffusion et infobulles des panneaux en anglais (Ctrl+Shift+…).
+
+### Étape 6 — Tunnels SSH
+Retirée du périmètre (ADR-038) : rien à tester.
+
+### Étape 7 — Terminal local
+
+> **Préparation sous Windows** : PowerShell 7 (`winget install Microsoft.PowerShell`), une distribution WSL (`wsl -l -q`, sinon `wsl --install -d Ubuntu`) avec `vim` et `htop`. Gestionnaire des tâches ouvert, onglet « Détails ».
+> **Préparation sur la VM Linux du lab (avec bureau)** : `sudo apt install -y zsh fish vim htop` ; noter `cat /etc/shells` et `echo $SHELL` ; garder un second terminal système ouvert pour `ps`.
+
+**Windows (LOC-01)**
+- [ ] ⭐ « Terminal local » liste Windows PowerShell, PowerShell 7, CMD et chaque distribution de `wsl -l -q` (sans `docker-desktop*`).
+- [ ] ⭐ Windows PowerShell s'ouvre dans `C:\Users\<toi>` ; `Get-Date` fonctionne.
+- [ ] PowerShell 7 : `$PSVersionTable.PSVersion` affiche 7.x.
+- [ ] CMD : `ver`, `dir`, `echo éàç` corrects.
+- [ ] ⭐ La distribution WSL s'ouvre dans `~` (`pwd` = `/home/<user>`).
+- [ ] Couleurs : `Get-ChildItem` coloré (pwsh) ; dans WSL, `ls --color` et `printf '\e[38;2;255;100;0mTRUECOLOR\e[0m\n'` (orange).
+- [ ] ⭐ Redimensionnement : `tput cols; tput lines` (WSL) et `$Host.UI.RawUI.WindowSize` (pwsh) suivent la fenêtre.
+- [ ] ⭐ Plein écran : `vim` et `htop` dans WSL (redimensionner pendant `htop`), terminal intact après la sortie.
+- [ ] Découpe d'un onglet local : le nouveau panneau ouvre le même profil ; ni SFTP, ni snippet, ni diffusion proposés.
+- [ ] 🔒 Fermer un onglet pwsh (noter `$PID` avant) : le processus disparaît, sans `OpenConsole.exe` ni `conhost.exe` en trop.
+- [ ] ⭐🔒 Verrouillage avec PowerShell, CMD et WSL ouverts : onglets fermés, contenu effacé, processus absents du Gestionnaire des tâches.
+- [ ] 🔒 Verrouillage pour inactivité : même résultat.
+- [ ] `exit` : l'onglet indique que le shell s'est terminé, et « Relancer » fonctionne.
+- [ ] ⭐ Forte sortie puis `exit` : `Get-ChildItem -Recurse C:\ -ErrorAction SilentlyContinue`, interface réactive, Ctrl+C, `exit` : état « terminé » en 3 s environ, sans figer l'application.
+- [ ] ⭐ Même commande, puis fermer l'onglet (ou verrouiller) sans attendre : fermeture immédiate, processus tués ; un nouveau terminal local fonctionne ensuite.
+- [ ] Sortie massive dans WSL (`yes | head -c 200M`, `cat /dev/urandom | base64` puis Ctrl+C) : application fluide, mémoire stable.
+- [ ] 🔒 Aucun champ ne permet de saisir un programme ou des arguments ; une distribution désinstallée disparaît après « Actualiser ».
+- [ ] Coffre verrouillé : la section n'est plus accessible ; après déverrouillage, la liste est détectée à nouveau.
+- [ ] Interface en anglais : libellés et erreurs traduits.
+
+**Linux (LOC-02), sur la VM du lab**
+- [ ] ⭐ bash, zsh et fish proposés (un par nom, ceux de `/etc/shells`) ; le shell de `$SHELL` en premier, marqué « par défaut ».
+- [ ] `echo $TERM $COLORTERM` affiche `xterm-256color truecolor` ; l'invite est dans `~`.
+- [ ] zsh et fish fonctionnent (`echo $0`).
+- [ ] Couleurs 256 et truecolor (`printf` comme sous Windows, palette `for i in {0..255}; …`).
+- [ ] ⭐ `watch -n1 'tput cols; tput lines'` suit le redimensionnement.
+- [ ] ⭐ `vim`, `htop`, `less /etc/services` corrects.
+- [ ] `yes`, `cat /dev/urandom | base64` : interface fluide, Ctrl+C immédiat, mémoire stable.
+- [ ] 🔒 `echo $$`, fermer l'onglet : `ps -p <PID>` ne renvoie rien.
+- [ ] ⭐🔒 `bash`, puis `trap '' HUP; echo $$`, fermer l'onglet : `ps -p <PID>` ne renvoie rien, en moins d'une seconde.
+- [ ] ⭐🔒 Deux terminaux locaux ouverts, verrouillage : leurs PID ont disparu (`ps -ef --forest`).
+- [ ] 🔒 Rechargement de l'interface (F5 en mode dev, hors du terminal) : coffre verrouillé, shell tué.
+- [ ] 🔒 Relancer Younji avec `SHELL=/usr/bin/python3` : python n'apparaît pas dans la liste.
+- [ ] 🔒 `echo /usr/bin/python3 | sudo tee -a /etc/shells`, puis « Actualiser » : python n'est pas proposé. Remettre en état : `sudo sed -i '\#^/usr/bin/python3$#d' /etc/shells`.
+- [ ] `exit` puis « Relancer » : même shell.
+- [ ] 🔒 Journaux de Younji : aucun contenu de terminal ni commande (`grep -ri 'TRUECOLOR\|trap'` dans le dossier `logs/`).
+
+**Limite connue (simple observation)**
+- [ ] `sleep 300 & disown` puis `exit` : l'onglet peut rester ouvert jusqu'à la fin de `sleep` (le processus restant garde le terminal ouvert). Sous Windows, `Start-Process notepad` puis `exit` : le Bloc-notes reste ouvert, c'est attendu.
 
 ---
 
