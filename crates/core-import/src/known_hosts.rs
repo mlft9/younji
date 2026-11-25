@@ -4,7 +4,8 @@
 //! clé** à un hôte que le coffre connaît déjà. Une ligne qui nomme un hôte déjà présent (en
 //! clair) est refusée et signalée comme conflit ; seule une ligne identique est ignorée sans
 //! bruit. Les lignes `@revoked` sont conservées (elles ne font que restreindre), les lignes
-//! `@cert-authority` ne sont pas prises en charge, les motifs à joker sont ignorés.
+//! `@cert-authority`, les motifs à joker et les noms hachés (que Younji ne consulte pas à la
+//! connexion) sont refusés.
 
 use std::collections::HashSet;
 
@@ -26,6 +27,9 @@ pub enum KnownHostsSkip {
     CertAuthority,
     /// Motif à joker ou négation : non pris en charge.
     Pattern,
+    /// Noms hachés (`|1|…`) : Younji ne les consulte pas à la connexion (ADR-023), la ligne
+    /// n'aurait aucun effet (et un `@revoked` haché ne révoquerait rien).
+    Hashed,
     /// L'hôte est déjà connu avec d'autres clés : refusé.
     Conflict,
     /// Taille maximale des clés d'hôte du coffre atteinte.
@@ -39,6 +43,7 @@ impl KnownHostsSkip {
             Self::Invalid => "invalid",
             Self::CertAuthority => "cert_authority",
             Self::Pattern => "pattern",
+            Self::Hashed => "hashed",
             Self::Conflict => "conflict",
             Self::TooLarge => "too_large",
         }
@@ -171,7 +176,11 @@ pub fn merge_known_hosts(
             skip(&mut merge, number, shown, KnownHostsSkip::Invalid);
             continue;
         }
-        if !line.hosts.starts_with('|') && line.hosts.contains(['*', '?', '!']) {
+        if line.hosts.split(',').any(|h| h.starts_with('|')) {
+            skip(&mut merge, number, shown, KnownHostsSkip::Hashed);
+            continue;
+        }
+        if line.hosts.contains(['*', '?', '!']) {
             skip(&mut merge, number, shown, KnownHostsSkip::Pattern);
             continue;
         }
@@ -253,18 +262,13 @@ mod tests {
                         |1|c2Vs|aGFjaA== ssh-ed25519 AAAAhache\n\
                         a\u{1b}b ssh-ed25519 AAAAx\n";
         let merge = merge_known_hosts(current, imported, &valid, MAX);
-        assert_eq!(merge.added_count, 2);
+        assert_eq!(merge.added_count, 1);
         assert!(
             merge
                 .content
                 .contains("@revoked srv ssh-ed25519 AAAAvieille\n")
         );
-        assert!(
-            merge
-                .content
-                .contains("|1|c2Vs|aGFjaA== ssh-ed25519 AAAAhache\n")
-        );
-        assert_eq!(merge.added[1].0, "(haché)");
+        assert!(!merge.content.contains("AAAAhache"));
         let reasons: Vec<_> = merge.skipped.iter().map(|s| (s.0, s.2)).collect();
         assert_eq!(
             reasons,
@@ -274,6 +278,7 @@ mod tests {
                 (4, KnownHostsSkip::Invalid),
                 (5, KnownHostsSkip::Invalid),
                 (6, KnownHostsSkip::Invalid),
+                (7, KnownHostsSkip::Hashed),
                 (8, KnownHostsSkip::Invalid),
             ]
         );

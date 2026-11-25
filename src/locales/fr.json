@@ -730,7 +730,8 @@
         "cert_authority": "@cert-authority non pris en charge",
         "pattern": "motif à joker non pris en charge",
         "conflict": "hôte déjà connu avec une autre clé : refusé",
-        "too_large": "taille maximale atteinte"
+        "too_large": "taille maximale atteinte",
+        "hashed": "noms hachés : non pris en charge par Younji (ligne sans effet)"
       },
       "fromDefault": "Importer ~/.ssh/known_hosts"
     },

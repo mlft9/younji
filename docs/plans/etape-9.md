@@ -59,7 +59,7 @@ Aucune nouvelle dépendance externe (motifs `*`/`?` et analyse écrits à la mai
 1. **Clés privées (`IdentityFile`) non importées automatiquement** : leur lecture demande souvent une passphrase et touche le secret le plus sensible du poste ; elles sont listées pour un import manuel.
 2. **Utilisateur absent de la config** : nom de l'utilisateur local (comportement d'OpenSSH), visible dans l'aperçu.
 3. **Hôtes déjà présents** (même adresse, port et utilisateur) : décochés et signalés, pas de doublon.
-4. **Conflits de `known_hosts` refusés**, même pour un hôte haché qu'on ne peut pas comparer en clair : une ligne hachée n'est ajoutée que si elle est absente à l'identique (limite : un hôte connu en clair et importé haché avec une autre clé ne peut pas être détecté ; documenté).
+4. **Conflits de `known_hosts` refusés**. D'abord, les lignes hachées n'étaient ajoutées que si elles étaient absentes à l'identique ; après la revue de la documentation, elles sont **refusées** (raison `hashed`) : la vérification des connexions ne consulte pas les noms hachés, elles n'auraient eu aucun effet.
 5. **Fusion de sauvegarde** : les entrées existantes (même identifiant) gagnent ; réglages du coffre (délai de verrouillage) conservés ; clés d'hôte fusionnées avec la même règle de conflit.
 6. **Phrase de passe de sauvegarde** : même politique que le mot de passe maître (12 caractères, zxcvbn ≥ 3).
 

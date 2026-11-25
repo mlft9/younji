@@ -1,4 +1,4 @@
-# Recette manuelle — étapes 0 à 8
+# Recette manuelle — étapes 0 à 9
 
 Fiche de test du porteur : ce qu'il faut installer, puis les tests à dérouler, étape par étape.
 Coche au fur et à mesure, note ce qui coince (capture d'écran si possible), puis envoie tes retours avec `/retour`.
@@ -281,6 +281,77 @@ Retirée du périmètre (ADR-038) : rien à tester.
 - [ ] R28 — Deux clics rapides sur le même hôte (Windows) : « Une ouverture RDP vers ce serveur est déjà en cours ».
 - [ ] R29 — Interface en anglais : formulaire, badge, bouton, erreurs traduits.
 - [ ] 🔒 R30 — Coffre créé avant l'étape 8 : les hôtes existants restent SSH et fonctionnent.
+
+### Étape 9 — Import OpenSSH, sauvegarde chiffrée
+
+**Préparation (poste client ; sous Windows `~` = `%USERPROFILE%`)**
+Sauvegarder d'abord son vrai `~/.ssh/config`, ou utiliser un compte de test.
+- P1. Créer `~/.ssh/config.d/` et ajouter en tête de `~/.ssh/config` :
+  ```
+  Include config.d/*
+  Host lab-*
+      User labadmin
+      IdentityFile ~/.ssh/id_lab_ed25519
+  Host web-prod
+      HostName <IP VM Linux>
+      ProxyJump bastion
+  Host bastion
+      HostName <IP VM Linux>
+      Port 22
+  Match host *.corp
+      User corp
+  Host !interdit *
+      ServerAliveInterval 30
+  Host badtoken
+      HostName %r.example.test
+  Host badport
+      HostName 192.0.2.1
+      Port 99999
+  ```
+  puis `~/.ssh/config.d/10-lab` : `Host lab-deb` / `  HostName <IP VM Debian>`.
+- P2. Créer à la main dans Younji un hôte identique à `bastion` (même adresse, port, utilisateur).
+- P3. `ssh-keyscan -t ed25519 <IP VM> > kh_test` puis `ssh-keyscan -H -t ed25519 <IP VM2> >> kh_test` ; ajouter une ligne `@cert-authority *.lab ssh-ed25519 AAAA…` et une ligne `<IP déjà connue dans Younji> ssh-ed25519 <autre clé>` (clé de `ssh-keygen -t ed25519 -f /tmp/x -N ""`, fichier `/tmp/x.pub`).
+
+**Import de ~/.ssh/config**
+- [ ] ⭐ I1 — Carnet > « Importer ~/.ssh/config » : `lab-deb` (venu de l'Include, utilisateur `labadmin` hérité de `lab-*`), `web-prod`, `bastion`.
+- [ ] ⭐ I2 — Entrées ignorées avec leur raison : `Host lab-*` et `Host !interdit *` (joker), `Match host *.corp`, `badtoken` (jeton %), `badport` (port invalide).
+- [ ] 🔒 I3 — `web-prod` : avertissement « ProxyJump ignoré ».
+- [ ] 🔒 I4 — `lab-deb` : « clé à importer à part » ; aucune clé ajoutée dans Clés, aucune passphrase demandée.
+- [ ] I5 — `bastion` décoché, « déjà dans le carnet ».
+- [ ] ⭐ I6 — Importer deux hôtes : groupe « Import OpenSSH », sans identité ; un hôte sans `User` reçoit l'utilisateur local.
+- [ ] I7 — Relancer l'import : les hôtes importés sont décochés, aucun doublon.
+- [ ] I8 — Connexion à `lab-deb` importé : TOFU puis terminal normaux.
+
+**Import de known_hosts**
+- [ ] ⭐ I9 — Clés d'hôte > « Autre fichier… » > `kh_test` : ajouts listés ; la ligne hachée est refusée (« noms hachés : non pris en charge »).
+- [ ] 🔒⭐ I10 — L'IP déjà connue avec une autre clé est en **conflit** ; après application, l'ancienne clé est inchangée et la connexion se fait sans alerte.
+- [ ] 🔒 I11 — `@cert-authority` ignorée avec sa raison.
+- [ ] I12 — Réimporter le même fichier : 0 ajout, doublons signalés.
+
+**Export de sauvegarde**
+- [ ] 🔒 I13 — Phrase `azerty123` : refusée (trop faible), aucune boîte de dialogue.
+- [ ] 🔒⭐ I14 — Phrase égale au mot de passe maître : « doit être différente du mot de passe maître ».
+- [ ] ⭐ I15 — Phrase robuste confirmée : export réussi, champs vidés.
+- [ ] 🔒 I16 — Linux : `stat -c %a <fichier>` affiche `600`.
+- [ ] 🔒 I17 — Contenu illisible : `head -c 4 f; strings f | grep -iE 'labadmin|bastion|BEGIN'` (Linux) ou `Format-Hex f | Select -First 5` (Windows) : `YNJB` puis rien en clair.
+- [ ] 🔒 I18 — Cinq exports d'affilée : les trois premiers immédiats, puis 1 s, 2 s… (compteur partagé avec le déverrouillage, voulu) ; remis à zéro par un verrouillage puis un déverrouillage.
+
+**Import de sauvegarde**
+- [ ] ⭐ I19 — Profil vierge : noter les compteurs (hôtes, groupes, identités, clés, snippets, clés d'hôte) ; fermer Younji, renommer le dossier de données (`~/.local/share/io.github.mlft9.younji` ou `%APPDATA%\io.github.mlft9.younji`) en `.orig` (ou autre poste) ; créer un coffre, importer en « Remplacer » : mêmes compteurs, connexion sans ressaisie, mêmes empreintes de clés. Restaurer ensuite le dossier `.orig`.
+- [ ] 🔒 I20 — Modifier un hôte puis importer en « Fusionner » : pas de confirmation, la modification est conservée, seuls les éléments absents sont ajoutés. « Remplacer » : confirmation qui mentionne les clés d'hôte ; Annuler ne change rien.
+- [ ] 🔒⭐ I21 — Un octet modifié (copie `t.younji-backup`) :
+  - Linux : `b=$(od -An -tx1 -j200 -N1 t.younji-backup | tr -d ' '); printf "\\x$(printf %02x $((0x$b ^ 1)))" | dd of=t.younji-backup bs=1 seek=200 conv=notrunc`, puis `cmp` (une seule différence).
+  - Windows : `$p="t.younji-backup"; $b=[IO.File]::ReadAllBytes($p); $b[200]=$b[200] -bxor 1; [IO.File]::WriteAllBytes($p,$b)` (ou HxD).
+  Import refusé (« phrase de passe incorrecte ou fichier corrompu »), coffre inchangé. Avec l'octet 2 (dans `YNJB`) : « fichier invalide ».
+- [ ] 🔒 I22 — Mauvaise phrase de passe : même message générique, rien importé.
+- [ ] 🔒 I23 — Choisir `vault.younji` comme sauvegarde : refusé.
+
+**Verrouillage et langue**
+- [ ] 🔒 I24 — Ouvrir l'aperçu de l'import de ~/.ssh/config, verrouiller, déverrouiller, valider l'ancien aperçu : « aperçu plus valable », rien ajouté. Idem pour known_hosts.
+- [ ] I25 — Interface en anglais : I1, I2, I13, I21 traduits, aucune clé brute.
+
+**Limites connues**
+- « Remplacer » reprend les clés d'hôte de la sauvegarde telles quelles (restauration de sa propre sauvegarde).
 
 ---
 

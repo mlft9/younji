@@ -730,7 +730,8 @@
         "cert_authority": "@cert-authority not supported",
         "pattern": "wildcard pattern not supported",
         "conflict": "host already known with another key: refused",
-        "too_large": "maximum size reached"
+        "too_large": "maximum size reached",
+        "hashed": "hashed names: not supported by Younji (line would have no effect)"
       },
       "fromDefault": "Import ~/.ssh/known_hosts"
     },
