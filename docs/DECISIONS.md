@@ -44,6 +44,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 037 | Snippets dans le coffre, variables sans échappement automatique | Acceptée, prise en autonomie, à relire |
 | 038 | Retrait des tunnels SSH (étape 6) | Acceptée |
 | 039 | Terminal local : profils détectés par le cœur, commandes `term_*` séparées | Acceptée, prise en autonomie, à relire |
+| 040 | RDP v1 : identifiants Windows de type domaine écrits par l'API, seul module `unsafe` du projet | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -569,3 +570,30 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Un programme laissé en arrière-plan par le shell (`cmd &`, `trap '' HUP; cmd`) peut survivre à l'arrêt du shell et garder le PTY ouvert ; le fil de lecture du terminal concerné reste alors bloqué jusqu'à sa fin. Pas de fuite de données ; limite documentée dans `SECURITE.md`.
 - Trois fils système par terminal local (lecture, écriture, attente) ; le registre est limité à 32 terminaux.
 - Les variables d'environnement de l'utilisateur, y compris d'éventuels secrets qu'il y a placés lui-même, sont transmises à son shell, comme dans tout terminal.
+
+## ADR-040 — RDP v1 : identifiants Windows de type domaine écrits par l'API, seul module `unsafe` du projet
+**Statut** : Acceptée (25/11/2026) — prise en autonomie, à relire par le porteur. Met en œuvre ADR-007 (premier temps) ; prolonge ADR-026 (verrouillage) et ADR-030 (identités).
+**Contexte** : RDP-02 demande d'ouvrir un hôte RDP du carnet dans le client du système (`mstsc` sous Windows, FreeRDP sous Linux) **sans jamais passer le mot de passe en ligne de commande** (`SECURITE.md` §4.3). mstsc n'accepte pas de mot de passe dans un fichier `.rdp` utilisable : il le lit dans le gestionnaire d'identifiants de Windows, sous la cible `TERMSRV/<hôte>`. Sous Linux, FreeRDP tourne sans terminal : il ne peut poser aucune question à l'utilisateur.
+**Décision** :
+- **Windows : identifiant de type « domaine » écrit par l'API Win32** (`CredWriteW`, `CredReadW`, `CredEnumerateW`, `CredDeleteW`, module `crates/core-rdp/src/wincred.rs`) : type `CRED_TYPE_DOMAIN_PASSWORD`, cible `TERMSRV/<hôte>`, persistance `CRED_PERSIST_SESSION` (jamais écrit sur disque ni itinérant). Le mot de passe d'un tel identifiant n'est utilisable que par LSA (mstsc via CredSSP) : un autre programme de la session ne peut pas le relire par `CredRead`. Jamais `cmdkey /pass:`, qui mettrait le mot de passe dans les arguments d'un processus.
+- **`unsafe` limité à ce module** : la règle `unsafe_code` du workspace passe de `forbid` à `deny` **pour la seule crate `core-rdp`**, et seul `wincred` l'autorise localement (`#![allow(unsafe_code)]`). Clippy `undocumented_unsafe_blocks = "deny"` impose un commentaire `SAFETY:` sur chaque bloc. Toute autre utilisation d'`unsafe` dans la crate, ou ailleurs dans le workspace, reste une erreur de compilation.
+- **Marqueur non secret** : chaque identifiant écrit par Younji porte le commentaire `Younji (temporaire)`. Il sert à distinguer un identifiant de Younji d'un identifiant enregistré par l'utilisateur.
+- **Durée de vie** : l'identifiant et le fichier `.rdp` sont supprimés à la fin de mstsc, au plus tard 60 s après le lancement (mstsc lit l'identifiant en début de connexion), au verrouillage (clients arrêtés, ADR-026), à la fermeture de Younji (`RunEvent::Exit`, car Tauri termine le processus sans détruire l'état géré) et, après un arrêt brutal, au démarrage suivant (suppression des `TERMSRV/*` portant le marqueur).
+- **Identifiant de l'utilisateur jamais touché** : si `TERMSRV/<hôte>` existe sans le marqueur, Younji ne l'écrase pas, ne le supprime pas, et mstsc l'utilise ; l'interface le signale.
+- **Un seul lancement à la fois par serveur** : un second lancement vers la même cible, pendant que l'identifiant temporaire du premier existe (même instance ou autre instance de Younji), est refusé (`rdp.busy`) au lieu d'écraser l'identifiant avec un autre compte.
+- **Linux : `xfreerdp3` (FreeRDP 3) seul**, cherché dans les seuls dossiers absolus du `PATH`. Mot de passe écrit sur l'entrée standard (`/from-stdin:force`), tube fermé aussitôt ; certificat en `/cert:tofu,deny` (premier certificat mémorisé, changement refusé sans question, comme les clés d'hôte SSH) ; mot de passe obligatoire dans l'identité. FreeRDP 2 (`xfreerdp`) n'est pas recherché : il ne connaît pas `/cert:tofu,deny`.
+- **Clients arrêtés** au verrouillage, au rechargement de l'interface et à la fermeture de Younji, sur les deux systèmes.
+- **Redirections limitées au presse-papiers** : ni disques, ni imprimantes, ni cartes à puce, ni ports.
+
+**Alternatives écartées** :
+- Crate `keyring` : elle écrit des identifiants **génériques**, dont le mot de passe est relisible en clair par tout programme de la session (`CredRead`).
+- `cmdkey /add:… /pass:…` : mot de passe visible dans la liste des processus.
+- Mot de passe dans le fichier `.rdp` (`password 51:b:`, chiffré par DPAPI) : fichier sur disque contenant un secret déchiffrable par toute la session.
+- Linux : `/p:` en argument (visible dans `ps`), variable d'environnement (lisible dans `/proc/<pid>/environ`), `/cert:ignore` (aucune vérification du serveur), question interactive du certificat (impossible sans terminal).
+- Prendre en charge FreeRDP 2 : il ne connaît ni `/cert:tofu,deny` ni le même dialogue sur l'entrée standard.
+
+**Conséquences** :
+- Premier et seul code `unsafe` de Younji : quelques blocs FFI documentés, compilés sous Windows seulement, à relire à chaque revue de sécurité. `windows-sys` (MIT OR Apache-2.0, déjà dans l'arbre via Tauri) est ajouté à `core-rdp` pour Windows seulement.
+- Si l'utilisateur met plus de 60 s à accepter un certificat inconnu dans mstsc, l'identifiant a disparu : mstsc redemande le mot de passe. Limite assumée (secret présent le moins longtemps possible).
+- Sous Linux, un hôte RDP sans mot de passe dans son identité ne peut pas être ouvert (`rdp.password_required`) ; sous Windows, mstsc le demande lui-même.
+- La protection du certificat RDP sous Linux repose sur le magasin de FreeRDP (`~/.config/freerdp/`), pas sur le coffre ; la vérification TOFU intégrée viendra avec IronRDP (étape 12).

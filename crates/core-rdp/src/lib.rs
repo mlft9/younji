@@ -1,5 +1,5 @@
 //! RDP v1 de Younji (RDP-02) : lancement du client du système (`mstsc` sous Windows,
-//! `xfreerdp3`/`xfreerdp` sous Linux) **sans jamais passer le mot de passe en ligne de
+//! `xfreerdp3`, FreeRDP 3 sous Linux) **sans jamais passer le mot de passe en ligne de
 //! commande** (SECURITE.md §4.3). Sans dépendance à Tauri (ADR-004).
 //!
 //! - [`target`] : cible validée (adresse, port, utilisateur, domaine, résolution) ;

@@ -59,6 +59,9 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
   - sous Windows : Windows PowerShell, PowerShell 7, Invite de commandes et chaque distribution WSL, détectées automatiquement ;
   - sous Linux : les shells de `/etc/shells` (bash, zsh, fish…), votre shell par défaut en premier ;
   - couleurs, redimensionnement, applications plein écran (vim, htop), recherche, copier/coller et écran partagé fonctionnent comme dans un terminal SSH ; quand le shell se termine, « Relancer » le rouvre.
+- Bureau à distance (RDP) : un hôte du carnet peut être de type RDP, avec son domaine Windows et sa résolution (plein écran ou largeur × hauteur). Double-clic ou « Ouvrir en RDP » le lance dans le client du système avec l'identité de l'hôte, sans ressaisir le mot de passe (ADR-040) :
+  - sous Windows : Connexion Bureau à distance (mstsc). Si vous avez déjà enregistré un identifiant Windows pour ce serveur, il est utilisé tel quel et Younji vous le signale ;
+  - sous Linux : FreeRDP 3 (`xfreerdp3`, paquet `freerdp3-x11`), qui doit être installé ; l'identité de l'hôte doit alors contenir un mot de passe.
 
 ### Retiré
 - Tunnels SSH (étape 6, TUN-01 à TUN-03) : fonction retirée du périmètre, jugée non nécessaire pour le début du projet (ADR-038). La section « Tunnels » de la barre latérale, qui n'affichait qu'un emplacement réservé, est supprimée.
@@ -73,6 +76,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Fermer un onglet de terminal ferme aussi les onglets SFTP qui utilisent sa connexion ; verrouiller l'application arrête aussi les transferts et les éditions en cours.
 - Un coffre enregistré par cette version ne peut plus être ouvert par une version plus ancienne de Younji, qui le refuse sans rien perdre (ADR-037).
 - Verrouiller l'application, ou recharger l'interface, ferme aussi les terminaux locaux et arrête les programmes qui y tournent.
+- Verrouiller l'application, la recharger ou la fermer ferme aussi les fenêtres RDP ouvertes depuis Younji.
 
 ### Corrigé
 - Les lettres accentuées tapées au clavier n'apparaissaient pas sur un serveur sans locale (bash en locale « C ») : Younji propose désormais `LANG=C.UTF-8` et `LC_CTYPE=C.UTF-8` à l'ouverture du shell, comme OpenSSH envoie `LANG LC_*` ; `LC_CTYPE` reste efficace quand le serveur réécrit `LANG=C` (conteneurs Proxmox).
@@ -119,3 +123,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Pendant la diffusion, un collage demande toujours confirmation, même sur une seule ligne, et rappelle les serveurs visés. Seules vos frappes sont diffusées : un serveur ne peut pas faire écrire son terminal dans les autres sessions.
 - Les snippets restent chiffrés dans le coffre. Leur contenu (hormis retours à la ligne et tabulations) et les valeurs des variables ne peuvent contenir ni caractère de contrôle ni caractère invisible (par exemple ceux qui inversent le sens du texte), pour qu'aucune commande cachée ne parte vers le serveur. Un snippet n'est exécuté que sur demande explicite, après aperçu, et seulement dans les sessions cochées.
 - Le terminal local ne peut lancer que les shells détectés par Younji : aucun champ ne permet de choisir un autre programme, et une variable `SHELL` modifiée ne fait pas lancer un programme absent de `/etc/shells`. Il n'est accessible qu'avec le coffre déverrouillé ; fermer un onglet ou verrouiller arrête le shell, même s'il ignore le signal de fin habituel. Rien de ce qui s'y tape ou s'y affiche n'est écrit dans les journaux. Un programme que vous laissez tourner en arrière-plan (`commande &`) peut survivre à la fermeture du shell, comme dans un terminal classique.
+- RDP : le mot de passe n'apparaît jamais dans la liste des processus ni dans un fichier. Sous Windows, il passe par un identifiant temporaire du gestionnaire d'identifiants, que les autres programmes ne peuvent pas relire, jamais écrit sur disque, et supprimé dès la fermeture de la fenêtre RDP ou au plus tard 60 secondes après son ouverture (puis à nouveau au démarrage suivant si Younji a été arrêté brutalement). Sous Linux, il est transmis à FreeRDP par un canal privé, jamais en argument. Si vous mettez plus de 60 secondes à accepter le certificat d'un nouveau serveur, mstsc vous redemandera le mot de passe.
+- RDP sous Linux : le certificat d'un serveur est mémorisé à la première connexion ; s'il change ensuite, la connexion est refusée sans question, comme pour les clés d'hôte SSH.
+- Les réglages d'un hôte RDP (adresse, utilisateur, domaine) sont contrôlés pour qu'aucune option ou instruction cachée ne puisse être glissée au client RDP. Seul le presse-papiers est partagé avec le serveur : ni disques, ni imprimantes, ni cartes à puce.
+- Un hôte RDP ne peut jamais être utilisé pour une connexion SSH ni pour déployer une clé.

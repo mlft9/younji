@@ -22,7 +22,7 @@ pub enum RdpError {
     /// Mot de passe trop long ou contenant un retour à la ligne.
     #[error("mot de passe inutilisable")]
     InvalidPassword,
-    /// Aucun client RDP trouvé (mstsc, xfreerdp3, xfreerdp).
+    /// Aucun client RDP trouvé (mstsc, xfreerdp3).
     #[error("client RDP introuvable")]
     ClientNotFound,
     /// Mot de passe requis (FreeRDP ne peut pas le demander sans terminal).

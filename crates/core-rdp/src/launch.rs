@@ -4,7 +4,7 @@
 //!   `TERMSRV/<hôte>` écrit par l'API du gestionnaire d'identifiants (jamais `cmdkey /pass:`).
 //!   Les deux sont supprimés à la fin de mstsc, au plus tard [`CLEANUP_DELAY`] après le
 //!   lancement, et à l'arrêt demandé par Younji (verrouillage).
-//! - **Linux** : `xfreerdp3` ou `xfreerdp`, mot de passe écrit sur l'entrée standard puis tube
+//! - **Linux** : `xfreerdp3` (FreeRDP 3), mot de passe écrit sur l'entrée standard puis tube
 //!   fermé (`/from-stdin:force`).
 //!
 //! Le mot de passe n'apparaît jamais dans les arguments ni dans l'environnement du processus.
@@ -33,7 +33,7 @@ const RDP_FILE_PREFIX: &str = "younji-";
 pub enum RdpClient {
     /// `mstsc.exe` (Windows).
     Mstsc(PathBuf),
-    /// `xfreerdp3` / `xfreerdp` (Linux).
+    /// `xfreerdp3` (Linux, FreeRDP 3).
     FreeRdp(PathBuf),
 }
 
@@ -333,8 +333,13 @@ fn spawn_mstsc(
                 active.release(&name);
                 existing = true;
             }
-            // Aucun, ou reste d'une exécution interrompue de Younji : (ré)écrit puis supprimé.
-            Existing::None | Existing::Younji => {
+            // Identifiant marqué par une **autre** instance de Younji (les restes d'un arrêt
+            // brutal sont supprimés au démarrage) : ne pas l'écraser avec un autre compte.
+            Existing::Younji => {
+                active.release(&name);
+                return Err(RdpError::Busy);
+            }
+            Existing::None => {
                 cleanup.credential = Some(name.clone());
                 let username = if target.domain().is_empty() || target.username_has_domain() {
                     target.username().to_owned()

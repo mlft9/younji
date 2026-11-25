@@ -165,7 +165,6 @@ export interface VaultEvent {
 /** Identifiant opaque d'une entrée du coffre (UUID). */
 export type EntryId = string;
 
-/** Hôte du carnet (aucun secret). */
 /** Résolution d'une session RDP. */
 export type RdpResolution =
   { mode: 'fullscreen' } | { mode: 'fixed'; width: number; height: number };
@@ -174,6 +173,7 @@ export type RdpResolution =
 export type HostProtocol =
   { kind: 'ssh' } | { kind: 'rdp'; domain: string; resolution: RdpResolution };
 
+/** Hôte du carnet (aucun secret). */
 export interface HostEntry {
   id: EntryId;
   name: string;
