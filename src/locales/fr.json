@@ -8,7 +8,6 @@
     "hosts": "Hôtes",
     "keys": "Clés",
     "snippets": "Snippets",
-    "tunnels": "Tunnels",
     "sftp": "SFTP",
     "settings": "Paramètres"
   },
@@ -20,11 +19,6 @@
     "close": "Fermer l'onglet {{title}}",
     "renameLabel": "Nom de l'onglet",
     "renameHint": "Double-clic ou F2 pour renommer, glisser pour déplacer"
-  },
-  "sections": {
-    "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
-    "snippets": "Vos commandes réutilisables apparaîtront ici.",
-    "tunnels": "Vos tunnels SSH apparaîtront ici."
   },
   "settings": {
     "title": "Paramètres",

@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 import { HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useUi } from '@/stores/ui';
 
-import { SectionPlaceholder } from './SectionPlaceholder';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
 
@@ -45,7 +44,6 @@ export function AppShell() {
           {section === 'keys' && <KeysView />}
           {section === 'sftp' && <SftpSectionView />}
           {section === 'snippets' && <SnippetsView />}
-          {section === 'tunnels' && <SectionPlaceholder section={section} />}
         </main>
         {/* Les sessions restent montées quand leur onglet est masqué : le terminal garde son tampon. */}
         {tabs.map((tab) =>

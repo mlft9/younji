@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 /** Sections de la barre latérale (APP-01). */
-export const SECTIONS = ['hosts', 'keys', 'snippets', 'tunnels', 'sftp', 'settings'] as const;
+export const SECTIONS = ['hosts', 'keys', 'snippets', 'sftp', 'settings'] as const;
 export type Section = (typeof SECTIONS)[number];
 
 interface UiState {

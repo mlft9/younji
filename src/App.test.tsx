@@ -45,7 +45,7 @@ describe('App', () => {
   it('affiche la barre latérale avec toutes les sections (APP-01)', async () => {
     await setup();
     const nav = screen.getByRole('navigation', { name: 'Navigation principale' });
-    for (const label of ['Hôtes', 'Clés', 'Snippets', 'Tunnels', 'SFTP', 'Paramètres']) {
+    for (const label of ['Hôtes', 'Clés', 'Snippets', 'SFTP', 'Paramètres']) {
       expect(within(nav).getByRole('button', { name: label })).toBeInTheDocument();
     }
     expect(screen.getByRole('tab', { name: 'Accueil' })).toHaveAttribute('aria-selected', 'true');
@@ -53,9 +53,12 @@ describe('App', () => {
 
   it('change de section au clic', async () => {
     const { user } = await setup();
-    await user.click(screen.getByRole('button', { name: 'Tunnels' }));
-    expect(screen.getByRole('heading', { name: 'Tunnels' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tunnels' })).toHaveAttribute('aria-current', 'page');
+    await user.click(screen.getByRole('button', { name: 'Snippets' }));
+    expect(screen.getByRole('heading', { name: 'Snippets' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Snippets' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   it('bascule la langue à chaud (APP-02)', async () => {

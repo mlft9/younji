@@ -8,7 +8,6 @@
     "hosts": "Hosts",
     "keys": "Keys",
     "snippets": "Snippets",
-    "tunnels": "Tunnels",
     "sftp": "SFTP",
     "settings": "Settings"
   },
@@ -20,11 +19,6 @@
     "close": "Close tab {{title}}",
     "renameLabel": "Tab name",
     "renameHint": "Double-click or F2 to rename, drag to move"
-  },
-  "sections": {
-    "comingSoon": "This section will arrive in step {{step}} of the roadmap.",
-    "snippets": "Your reusable commands will appear here.",
-    "tunnels": "Your SSH tunnels will appear here."
   },
   "settings": {
     "title": "Settings",
