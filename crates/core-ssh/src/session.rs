@@ -987,8 +987,24 @@ impl client::Handler for ClientHandler {
         }
     }
 
-    // Canaux ouverts à l'initiative du serveur : tous refusés (SECURITE.md §4.1). Les types
-    // inconnus sont déjà refusés par russh (`should_accept_unknown_server_channel`).
+    // Canaux ouverts à l'initiative du serveur : tous refusés (SECURITE.md §4.1).
+
+    /// Types de canal inconnus : refus explicite, sans dépendre de la valeur par défaut de russh
+    /// (qui pourrait changer d'une version à l'autre).
+    async fn should_accept_unknown_server_channel(
+        &mut self,
+        _id: russh::ChannelId,
+        _channel_type: &str,
+    ) -> bool {
+        if !self.refusal_logged {
+            self.refusal_logged = true;
+            tracing::warn!(
+                kind = "inconnu",
+                "canal ouvert par le serveur sans demande : refusé"
+            );
+        }
+        false
+    }
 
     async fn server_channel_open_session(
         &mut self,

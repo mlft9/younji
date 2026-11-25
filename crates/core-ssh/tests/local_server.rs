@@ -666,6 +666,12 @@ async fn channels_opened_by_the_server_are_refused() {
             .await
             .is_err()
     );
+    assert!(
+        server
+            .channel_open_forwarded_streamlocal("/tmp/socket")
+            .await
+            .is_err()
+    );
     // La session elle-même continue de fonctionner.
     client
         .handle
