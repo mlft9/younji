@@ -43,6 +43,7 @@ function terminal(id: string, host: string, paneOf: string | null = null): Sessi
     paneOf,
     customTitle: null,
     target: { host, port: 22, username: 'root', authKind: 'password', keyFile: null },
+    local: null,
     status: 'connected',
     errorCode: null,
     pendingHostKey: null,

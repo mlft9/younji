@@ -6,6 +6,7 @@ import {
   Server,
   Settings,
   SquareCode,
+  Terminal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -17,6 +18,7 @@ import { type Section, useUi } from '@/stores/ui';
 
 const ITEMS: readonly { section: Section; icon: LucideIcon }[] = [
   { section: 'hosts', icon: Server },
+  { section: 'local', icon: Terminal },
   { section: 'keys', icon: KeyRound },
   { section: 'snippets', icon: SquareCode },
   { section: 'sftp', icon: FolderTree },

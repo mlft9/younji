@@ -27,7 +27,9 @@ export function SnippetRunDialog({ run }: { run: { snippetId: EntryId; targets: 
   const snippet = useVault((s) => s.snapshot.snippets.find((x) => x.id === run.snippetId));
   const close = useSnippetRun((s) => s.close);
   const tabs = useSessions((s) => s.tabs);
-  const connected = tabs.filter((tab) => tab.kind === 'terminal' && tab.status === 'connected');
+  const connected = tabs.filter(
+    (tab) => tab.kind === 'terminal' && tab.local === null && tab.status === 'connected',
+  );
   const [values, setValues] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<string[]>(run.targets);
   const [error, setError] = useState<string | null>(null);

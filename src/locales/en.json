@@ -6,6 +6,7 @@
   "nav": {
     "label": "Main navigation",
     "hosts": "Hosts",
+    "local": "Local terminal",
     "keys": "Keys",
     "snippets": "Snippets",
     "sftp": "SFTP",
@@ -652,5 +653,23 @@
     "insert_other": "Insert in {{count}} sessions",
     "execute_one": "Run",
     "execute_other": "Run in {{count}} sessions"
+  },
+  "local": {
+    "intro": "Shells installed on this computer, detected by Younji. They open in a tab, in your home folder.",
+    "refresh": "Refresh",
+    "detecting": "Looking for installed shells…",
+    "none": "No shell found on this computer.",
+    "open": "Open",
+    "default": "default",
+    "starting": "Starting {{name}}…",
+    "failedTitle": "Could not open {{name}}",
+    "restart": "Restart",
+    "kind": {
+      "powershell": "Windows PowerShell",
+      "pwsh": "PowerShell 7",
+      "cmd": "Command Prompt",
+      "wsl": "WSL distribution",
+      "shell": "Shell"
+    }
   }
 }

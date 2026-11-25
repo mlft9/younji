@@ -9,7 +9,7 @@ import {
   type SplitDirection,
   splitPane as splitLayout,
 } from '@/features/terminal/layout';
-import type { AuthPromptInfo, EntryId, HostKeyInfo, KeyFileRef } from '@/lib/types';
+import type { AuthPromptInfo, EntryId, HostKeyInfo, KeyFileRef, LocalProfile } from '@/lib/types';
 
 /** Onglet d'accueil (sections de la barre latérale), toujours présent en premier. */
 export const HOME_TAB_ID = 'home';
@@ -73,6 +73,11 @@ export interface SessionTab {
   customTitle: string | null;
   /** Dernière cible tentée, pour pré-remplir le formulaire de reconnexion. */
   target: ConnectTarget | null;
+  /**
+   * Terminal local (étape 7) : profil détecté par le cœur. Un onglet local n'a ni cible SSH, ni
+   * panneau SFTP, et ne participe ni à la diffusion ni à l'envoi de snippets.
+   */
+  local: LocalProfile | null;
   status: TabStatus;
   /** Code d'erreur (`errors.<code>`) de la dernière tentative ou de la déconnexion. */
   errorCode: string | null;
@@ -114,6 +119,8 @@ interface SessionsState {
   focusPane: (paneId: string) => void;
   /** Ouvre un onglet de connexion et l'active. Renvoie son identifiant. */
   openTab: () => string;
+  /** Ouvre un onglet de terminal local (profil détecté) et l'active. Renvoie son identifiant. */
+  openLocalTab: (profile: LocalProfile) => string;
   /**
    * Ouvre un onglet SFTP double panneau sur la connexion d'un onglet de terminal et l'active.
    * Renvoie son identifiant, ou `null` si l'onglet parent n'existe pas.
@@ -150,6 +157,7 @@ function blankTerminal(id: string, paneOf: string | null): SessionTab {
     paneOf,
     customTitle: null,
     target: null,
+    local: null,
     status: 'form',
     errorCode: null,
     pendingHostKey: null,
@@ -201,6 +209,16 @@ export const useSessions = create<SessionsState>()((set, get) => ({
     return id;
   },
 
+  openLocalTab: (profile) => {
+    const id = newTabId();
+    const tab: SessionTab = { ...blankTerminal(id, null), local: profile, status: 'connecting' };
+    set((s) => ({
+      tabs: [...s.tabs.filter((t) => t.paneOf === null), tab, ...s.tabs.filter((t) => t.paneOf)],
+      activeTabId: id,
+    }));
+    return id;
+  },
+
   splitPane: (paneId, direction) => {
     const state = get();
     const pane = state.tabs.find((t) => t.id === paneId && t.kind === 'terminal');
@@ -241,7 +259,10 @@ export const useSessions = create<SessionsState>()((set, get) => ({
   },
 
   openSftpTab: (parentTabId) => {
-    const parent = get().tabs.find((t) => t.id === parentTabId && t.kind === 'terminal');
+    // Un terminal local n'a pas de connexion SFTP.
+    const parent = get().tabs.find(
+      (t) => t.id === parentTabId && t.kind === 'terminal' && t.local === null,
+    );
     if (!parent) return null;
     const root = rootOf(parent);
     const id = newTabId();
@@ -252,6 +273,7 @@ export const useSessions = create<SessionsState>()((set, get) => ({
       paneOf: null,
       customTitle: null,
       target: parent.target,
+      local: null,
       status: 'connected',
       errorCode: null,
       pendingHostKey: null,
@@ -403,6 +425,7 @@ export const useSessions = create<SessionsState>()((set, get) => ({
 /** Titre affiché : titre personnalisé, sinon `utilisateur@hôte`, sinon `null` (« Nouvelle session »). */
 export function defaultTabTitle(tab: SessionTab): string | null {
   if (tab.customTitle) return tab.customTitle;
+  if (tab.local) return tab.local.name;
   if (!tab.target) return null;
   if (tab.target.label) return tab.target.label;
   const host = tab.target.host.includes(':') ? `[${tab.target.host}]` : tab.target.host;

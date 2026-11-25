@@ -19,6 +19,7 @@ function terminal(
     paneOf: null,
     customTitle: null,
     target: { host, port: 22, username: 'root', authKind: 'password', keyFile: null },
+    local: null,
     status,
     errorCode: null,
     pendingHostKey: null,

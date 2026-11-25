@@ -19,6 +19,7 @@ import type {
   KeyGenerateRequest,
   KeyImportRequest,
   KnownHostEntry,
+  LocalProfile,
   JobId,
   LocalListing,
   LocalRootId,
@@ -27,6 +28,7 @@ import type {
   SessionEvent,
   SessionId,
   SnippetRequest,
+  TerminalId,
   SettingsResponse,
   SftpEvent,
   SftpId,
@@ -153,6 +155,44 @@ export function sshPickKeyFile(): Promise<KeyFileRef | null> {
 /** Ouvre un lien http(s) dans le navigateur du système (revalidé par le cœur). */
 export function openExternalUrl(url: string): Promise<void> {
   return call<undefined>('open_external_url', { url });
+}
+
+// ------------------------------------------------------------------ terminal local
+
+/** Détecte les shells installés ; seuls ces profils pourront être ouverts. */
+export function termProfiles(): Promise<LocalProfile[]> {
+  return call<LocalProfile[]>('term_profiles');
+}
+
+/**
+ * Ouvre un terminal local avec un profil détecté (désigné par son identifiant : le programme
+ * reste dans le cœur). Utilisable dès le retour ; la fin arrive par `onEvent` (`disconnected`).
+ */
+export function termOpen(
+  request: { profileId: string; cols: number; rows: number },
+  listeners: SessionListeners,
+): Promise<TerminalId> {
+  return call<TerminalId>('term_open', { ...request, ...sessionChannels(listeners) });
+}
+
+/** Envoie une saisie au terminal local (même convention que `sshWrite`). */
+export function termWrite(terminalId: TerminalId, data: string, binary = false): Promise<void> {
+  return call<undefined>('term_write', { terminalId, data, binary });
+}
+
+/** Répercute la taille du terminal local. */
+export function termResize(terminalId: TerminalId, cols: number, rows: number): Promise<void> {
+  return call<undefined>('term_resize', { terminalId, cols, rows });
+}
+
+/** Acquitte des octets affichés du terminal local. */
+export function termAck(terminalId: TerminalId, bytes: number): Promise<void> {
+  return call<undefined>('term_ack', { terminalId, bytes });
+}
+
+/** Ferme un terminal local (le processus est arrêté). */
+export function termClose(terminalId: TerminalId): Promise<void> {
+  return call<undefined>('term_close', { terminalId });
 }
 
 // ------------------------------------------------------------------ coffre

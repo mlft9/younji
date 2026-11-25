@@ -1,5 +1,6 @@
 import { HostsView } from '@/features/hosts/HostsView';
 import { KeysView } from '@/features/keys/KeysView';
+import { LocalTerminalsView } from '@/features/local/LocalTerminalsView';
 import { SettingsView } from '@/features/settings/SettingsView';
 import { BroadcastBanner } from '@/features/broadcast/BroadcastBanner';
 import { BroadcastDialog } from '@/features/broadcast/BroadcastDialog';
@@ -41,6 +42,7 @@ export function AppShell() {
         >
           {section === 'settings' && <SettingsView />}
           {section === 'hosts' && <HostsView />}
+          {section === 'local' && <LocalTerminalsView />}
           {section === 'keys' && <KeysView />}
           {section === 'sftp' && <SftpSectionView />}
           {section === 'snippets' && <SnippetsView />}

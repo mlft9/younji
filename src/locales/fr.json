@@ -6,6 +6,7 @@
   "nav": {
     "label": "Navigation principale",
     "hosts": "Hôtes",
+    "local": "Terminal local",
     "keys": "Clés",
     "snippets": "Snippets",
     "sftp": "SFTP",
@@ -652,5 +653,23 @@
     "insert_other": "Insérer dans {{count}} sessions",
     "execute_one": "Exécuter",
     "execute_other": "Exécuter dans {{count}} sessions"
+  },
+  "local": {
+    "intro": "Shells installés sur ce poste, détectés par Younji. Ils s'ouvrent dans un onglet, dans votre dossier personnel.",
+    "refresh": "Actualiser",
+    "detecting": "Recherche des shells installés…",
+    "none": "Aucun shell détecté sur ce poste.",
+    "open": "Ouvrir",
+    "default": "par défaut",
+    "starting": "Lancement de {{name}}…",
+    "failedTitle": "Impossible d'ouvrir {{name}}",
+    "restart": "Relancer",
+    "kind": {
+      "powershell": "Windows PowerShell",
+      "pwsh": "PowerShell 7",
+      "cmd": "Invite de commandes",
+      "wsl": "Distribution WSL",
+      "shell": "Shell"
+    }
   }
 }
