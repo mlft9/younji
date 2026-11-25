@@ -2,7 +2,7 @@
 
 Client **SSH / SFTP / RDP** de bureau pour **Windows et Linux**, dans l'esprit de MobaXterm et Termius, avec la sécurité comme priorité.
 
-> 🚧 **Statut** : étapes 1 à 5 (terminal SSH multi-onglets, coffre chiffré et carnet d'hôtes, 2FA et générateur de clés, SFTP, écran partagé, snippets et diffusion multi-sessions) validées. Disponible : connexion SSH par mot de passe, par clé ou avec 2FA (code TOTP), vérification stricte des clés d'hôte, terminal en onglets, coffre chiffré avec verrouillage manuel et automatique, carnet d'hôtes, identités, clés importées ou générées, export et déploiement de la clé publique, explorateur SFTP, écran partagé, snippets avec variables, diffusion de la saisie vers plusieurs serveurs. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md).
+> 🚧 **Statut** : étapes 1 à 5 (terminal SSH multi-onglets, coffre chiffré et carnet d'hôtes, 2FA et générateur de clés, SFTP, écran partagé, snippets et diffusion multi-sessions) validées. Disponible : connexion SSH par mot de passe, par clé ou avec 2FA (code TOTP), vérification stricte des clés d'hôte, terminal en onglets, coffre chiffré avec verrouillage manuel et automatique, carnet d'hôtes, identités, clés importées ou générées, export et déploiement de la clé publique, explorateur SFTP, écran partagé, snippets avec variables, diffusion de la saisie vers plusieurs serveurs. Étape 7 (terminal local : PowerShell, CMD, WSL, bash, zsh) prête à tester. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md).
 
 ## Fonctionnalités prévues
 - Terminal SSH multi-onglets, écran partagé, diffusion de commandes vers plusieurs serveurs

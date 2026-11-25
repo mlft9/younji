@@ -1,6 +1,6 @@
 # Architecture
 
-> Reflète le code à la fin de l'étape 5 (split, snippets, diffusion). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
+> Reflète le code à la fin de l'étape 7 (terminal local). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
 
 ## 1. Vue d'ensemble
 
@@ -18,17 +18,17 @@ flowchart LR
     ISO["Iframe d'isolation<br/>isolation/index.js<br/>(liste blanche)"]
     subgraph Core["Cœur Rust (fiable)"]
         ACL[Capabilities / ACL]
-        CMD["src-tauri : commandes IPC<br/>SessionManager (+ SftpRegistry), VaultState, SettingsStore"]
+        CMD["src-tauri : commandes IPC<br/>SessionManager (+ SftpRegistry), LocalTerminals,<br/>VaultState, SettingsStore"]
         ACL --> CMD
         subgraph Crates["crates/"]
             SSH[core-ssh]
             VAULT[core-vault]
-            TERM["core-term (étape 7)"]
+            TERM[core-term]
             IMP["core-import (étape 9)"]
             RDP["core-rdp (étape 8)"]
         end
-        CMD --> SSH & VAULT
-        CMD -.-> TERM & IMP & RDP
+        CMD --> SSH & VAULT & TERM
+        CMD -.-> IMP & RDP
         SSH -- "clés d'hôte<br/>(trait KnownHostsStorage)" --> CMD
     end
     IPCJS -- "invoke()" --> ISO
@@ -38,6 +38,7 @@ flowchart LR
     VAULT -- "vault.younji (chiffré)" --> DISK[(Disque)]
     CMD -- "settings.json (en clair, sans secret)" --> DISK
     SSH -- "fichiers transférés<br/>(dossiers choisis par le cœur)" --> DISK
+    TERM -- "PTY (ConPTY, openpty)" --> SHELL[(Shells locaux)]
     RDP -. RDP .-> WIN[(Postes Windows)]
 ```
 Traits pleins : en place. Pointillés : à venir.
@@ -51,7 +52,7 @@ Traits pleins : en place. Pointillés : à venir.
 
 ## 2. Découpage du code
 
-État actuel (étape 5) :
+État actuel (étape 7) :
 
 ```
 .
@@ -76,8 +77,10 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── connect/              Connexion rapide (dont le mode « Questions du serveur (2FA) »), dialogue
 │   │   │                         des questions du serveur (AuthPromptDialog), dialogue de clé d'hôte
 │   │   │                         inconnue, alerte de clé modifiée
-│   │   ├── terminal/             Contrôleur xterm.js par panneau (TerminalSession, avec diffusion de la
-│   │   │                         saisie et envoi de texte), vue, recherche, menu contextuel, garde de
+│   │   ├── local/                Terminal local : liste des shells détectés (LocalTerminalsView),
+│   │   │                         ouverture d'un onglet (openLocal.ts)
+│   │   ├── terminal/             Contrôleur xterm.js par panneau (TerminalSession, transport SSH ou local,
+│   │   │                         diffusion de la saisie et envoi de texte), vue, recherche, menu contextuel, garde de
 │   │   │                         collage, liens, file de saisie, suivi OSC 7 ; panneaux : arbre de
 │   │   │                         disposition (layout.ts), découpe et navigation (split.ts), affichage
 │   │   │                         récursif et séparateurs (SplitView), onglet découpé (SessionPanel),
@@ -100,7 +103,7 @@ Traits pleins : en place. Pointillés : à venir.
 │   ├── locales/{fr,en}.json      Traductions (embarquées, aucun chargement réseau)
 │   ├── stores/
 │   │   ├── vault.ts              État du coffre et contenu affichable (sans secret), vidé au verrouillage
-│   │   ├── sessions.ts           Onglets et panneaux : terminal ou SFTP (kind, parentTabId), onglet d'un
+│   │   ├── sessions.ts           Onglets et panneaux : terminal (SSH ou local) ou SFTP (kind, local, parentTabId), onglet d'un
 │   │   │                         panneau secondaire (paneOf), disposition par onglet (layouts), panneau
 │   │   │                         actif par onglet (focusedPane), état, cible sans secret, clé d'hôte en
 │   │   │                         attente, dossier OSC 7, panneau SFTP ouvert
@@ -124,6 +127,7 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │                         verrouillage, verrouillage au rechargement, enregistrement des commandes
 │   │   ├── state.rs              SessionManager : sessions ouvertes (64 max), fichiers de clé par identifiant,
 │   │   │                         registre SFTP fermé avec les sessions
+│   │   ├── term_state.rs         LocalTerminals : profils de la dernière détection, terminaux locaux (32 max)
 │   │   ├── sftp_state.rs         SftpRegistry : clients SFTP (64 max), dossiers locaux choisis (32 max),
 │   │   │                         éditions (16 max)
 │   │   ├── editor.rs             Éditeur de texte imposé (Bloc-notes, liste fixe sous Linux, open -e)
@@ -141,8 +145,10 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── commands/settings.rs  settings_get, settings_set
 │   │   ├── commands/sftp.rs      Commandes sftp_* et local_* : validation, RootPolicy, boîtes de dialogue,
 │   │   │                         Channel d'événements SFTP
+│   │   ├── commands/term.rs      Commandes term_* (terminal local) : profil désigné par identifiant, deux
+│   │   │                         Channel par terminal (mêmes formats que SSH)
 │   │   ├── commands/url.rs       open_external_url : revalidation http(s), ouverture via la crate open
-│   │   ├── error.rs              AppError { code } sérialisable, conversion depuis SshError et VaultError
+│   │   ├── error.rs              AppError { code } sérialisable, conversion depuis SshError, TermError et VaultError
 │   │   ├── logging.rs            Journaux rotatifs (tracing)
 │   │   └── navigation.rs         Garde de navigation de la fenêtre
 │   ├── build.rs                  Déclaration des commandes applicatives (AppManifest)
@@ -181,6 +187,13 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │   └── error.rs          SshError et ses codes stables ssh.*
 │   │   └── tests/                local_server.rs (serveur russh en mémoire), openssh.rs (#[ignore]),
 │   │                             fixtures/test_host_*.pub (clés publiques uniquement)
+│   ├── core-term/                Terminal local (LOC-01, LOC-02), sans dépendance à Tauri
+│   │   └── src/
+│   │       ├── profiles.rs       Détection des shells (Windows : PowerShell, pwsh, CMD, distributions WSL ;
+│   │       │                     Linux : shells de /etc/shells), programme et arguments gardés par le cœur
+│   │       ├── session.rs        LocalSession : PTY portable-pty, fils de lecture (contrôle de flux),
+│   │       │                     d'écriture et d'attente (seul propriétaire du processus)
+│   │       └── error.rs          TermError et ses codes stables term.*
 │   └── core-vault/               Coffre chiffré, sans dépendance à Tauri ni à core-ssh
 │       └── src/
 │           ├── format.rs         Format de fichier v1 (en-tête, bornes, lecture sans allocation excessive)
@@ -197,12 +210,12 @@ Traits pleins : en place. Pointillés : à venir.
 ├── scripts/
 │   ├── vitest.mjs                Lanceur Vitest (normalise la lettre de lecteur sous Windows)
 │   └── integration.mjs           Lanceur des tests d'intégration (charge .env.test s'il existe)
-├── Cargo.toml                    Workspace (src-tauri, crates/core-ssh, crates/core-vault), profils
+├── Cargo.toml                    Workspace (src-tauri, crates/core-ssh, crates/core-term, crates/core-vault), profils
 ├── deny.toml                     Règles cargo-deny (avis, licences, sources)
 └── rust-toolchain.toml           Toolchain stable + rustfmt + clippy
 ```
 
-À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape. Les tunnels SSH (ancienne étape 6) sont retirés du périmètre (ADR-038).
+À venir : `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape. Les tunnels SSH (ancienne étape 6) sont retirés du périmètre (ADR-038).
 
 ### Dépendances principales ajoutées à l'étape 1
 | Dépendance | Rôle | Note |
@@ -242,13 +255,20 @@ Aucune dépendance npm ajoutée.
 
 Aucune dépendance npm : le glisser-déposer utilise l'API HTML5.
 
+### Dépendance ajoutée à l'étape 7
+| Dépendance | Rôle | Note |
+|---|---|---|
+| `portable-pty` 0.9.0, dans `core-term` | PTY multiplateforme : ConPTY sous Windows, `openpty` sous Linux (projet wezterm) | MIT |
+
+Aucune dépendance npm.
+
 **Dépendances entre crates** : `core-ssh` et `core-vault` ne dépendent pas l'une de l'autre (ADR-004). C'est `src-tauri` qui fait le lien :
 - il lit une identité dans le coffre (mot de passe, clé privée) et la passe à `core-ssh` sous forme de `Credentials` ;
 - il stocke dans le coffre une clé générée par `core-ssh` (`generate_key`), comme une clé importée ;
 - pour un déploiement, il re-dérive la ligne de clé publique de la clé privée du coffre (`AuthorizedKeyLine::from_private`) ;
 - il implémente le trait `KnownHostsStorage` de `core-ssh` pour le coffre (`VaultKnownHosts`, ADR-027).
 
-Les futures crates `core-term`, `core-import` et `core-rdp` suivront la même règle.
+`core-term` suit la même règle : elle ne dépend ni de `core-ssh` ni de `core-vault`, et c'est `src-tauri` qui vérifie l'état du coffre avant d'ouvrir un terminal local. Les futures crates `core-import` et `core-rdp` feront de même.
 
 **Règles de compilation communes (workspace)** : edition 2024, `unsafe_code = "forbid"`, et `unwrap`, `expect`, `panic`, `dbg!`, `todo!` interdits par clippy hors tests. En profil `dev`, `argon2`, `blake2`, `rsa`, `crypto-bigint` et `crypto-primes` sont compilés en `opt-level = 3` : sans cela, une dérivation Argon2id (64 Mio, 3 passes) ou la génération d'une clé RSA 4096 rendraient les tests et `npm run tauri dev` très lents. Sans effet sur la compilation de production.
 
@@ -257,7 +277,7 @@ Les futures crates `core-term`, `core-import` et `core-rdp` suivront la même r�
 | Mécanisme | Usage | Exemple |
 |---|---|---|
 | `invoke()` (commande) | Action ponctuelle avec un résultat | `app_info`, `ssh_connect`, `vault_unlock`, `host_save` |
-| `Channel<T>` passé en argument | Flux ou notification ciblée | Sortie et état d'une session SSH ; verrouillage du coffre (`vault_watch`) ; transferts et éditions SFTP (`sftp_open`, `sftp_edit`) |
+| `Channel<T>` passé en argument | Flux ou notification ciblée | Sortie et état d'une session SSH ou d'un terminal local ; verrouillage du coffre (`vault_watch`) ; transferts et éditions SFTP (`sftp_open`, `sftp_edit`) |
 
 Aucun événement global de Tauri n'est utilisé : la permission `core:event:*` n'est pas accordée à la fenêtre (ADR-028).
 
@@ -338,6 +358,17 @@ SFTP (étape 4, ADR-034). Tous les chemins distants sont revalidés par `RemoteP
 | `local_pick_root` | aucune (boîte de dialogue ouverte par le cœur, `RootPolicy` appliquée) | `{ id, name } \| null` : identifiant et nom du dossier, jamais le chemin | `allow-local-pick-root` |
 | `local_list` | `rootId`, `path` (relatif, confiné) | `{ entries[{ name, kind, size, modified }], truncated }` | `allow-local-list` |
 
+Terminal local (étape 7, ADR-039). Les commandes `term_*` sont séparées des `ssh_*` : aucune commande SSH, SFTP ou de clé d'hôte ne peut viser un terminal local. Le préfixe `term_` évite la confusion avec `local_pick_root` et `local_list` (dossiers locaux du SFTP).
+
+| Commande | Entrée | Sortie | Permission |
+|---|---|---|---|
+| `term_profiles` | aucune ; lance la détection et la mémorise comme seule liste lançable | `[{ id, name, kind, isDefault }]`, `kind` = `powershell`, `pwsh`, `cmd`, `wsl` ou `shell` ; jamais le chemin ni les arguments ; `vault.locked` si le coffre est verrouillé | `allow-term-profiles` |
+| `term_open` | `profileId` (512 octets max, issu de la dernière détection), `cols`, `rows`, `onEvent: Channel<SessionEventDto>`, `onOutput: Channel<octets>` | `TerminalId` (entier opaque, registre distinct de celui de SSH) ; `term.unknown_profile`, `vault.locked`, `ssh.too_many_sessions` (32 terminaux locaux) | `allow-term-open` |
+| `term_write` | `terminalId`, `data`, `binary` (même convention que `ssh_write`) ; 64 Kio max | aucune | `allow-term-write` |
+| `term_resize` | `terminalId`, `cols` (1–1000), `rows` (1–500) | aucune | `allow-term-resize` |
+| `term_ack` | `terminalId`, `bytes` | aucune | `allow-term-ack` |
+| `term_close` | `terminalId` | aucune ; le processus est tué | `allow-term-close` |
+
 Aucune commande n'accepte de politique de conflit : tout transfert démarre en « demander ». Les structures de requête refusent les champs inconnus, si bien qu'un chemin absolu ne peut pas être glissé dans `target` ou `source`.
 
 **Secrets en entrée** : seuls `ssh_connect` (`auth`), `ssh_auth_answer` (`answers`), `vault_create`, `vault_unlock`, `vault_change_password`, `identity_save` (`password`), `key_import` (`passphrase`) et `key_deploy` (`password`) en transportent, une seule fois. Côté Rust, ils sont placés dans un `SecretString` dès la désérialisation. **Aucune commande n'en renvoie** :
@@ -378,9 +409,15 @@ Aucune commande n'accepte de politique de conflit : tout transfert démarre en �
 
 **Événement du coffre** (`VaultEventDto`, JSON sur le `Channel` de `vault_watch`) : `{ type: "locked", reason }`, avec `reason` = `manual`, `idle` ou `reload`. L'interface s'abonne une fois au démarrage ; à la réception, elle détruit les terminaux et affiche l'écran de déverrouillage avec la cause.
 
+**Événements d'un terminal local** : même `SessionEventDto`, réduit à `disconnected` avec le code `term.exited` à la fin du processus. Il n'y a pas de `connected` : le terminal est utilisable dès que `term_open` renvoie son identifiant, et l'interface passe l'onglet à l'état connecté elle-même.
+
 La sortie du terminal passe sur `onOutput` en **octets bruts**, par lots de 8 ms ou 32 Kio. Les messages de plus de 1 Kio sont récupérés par la commande interne `plugin:__TAURI_CHANNEL__|fetch`, que l'isolation laisse passer (ADR-024).
 
 **Contrôle de flux** (ADR-024) : l'interface acquitte par `ssh_ack` les octets affichés par xterm.js. Au-delà de 2 Mio non acquittés, la session arrête de lire le canal SSH ; le serveur est alors freiné par la fenêtre SSH. La saisie part par une file côté interface (`inputQueue.ts`) : un seul `ssh_write` en cours, pour que les frappes ne soient jamais réordonnées.
+
+**Contrôle de flux d'un terminal local** : même règle, par `term_ack`. Au-delà de 2 Mio non acquittés, le fil de lecture s'arrête ; le tampon du PTY se remplit et le programme local est bloqué en écriture.
+
+**Cycle de vie d'un terminal local** (`core-term`, `term_state.rs`) : `LocalSession::spawn` ouvre un PTY, lance le programme du profil (arguments séparés, sans shell intermédiaire, dossier personnel, environnement hérité plus `TERM=xterm-256color` et `COLORTERM=truecolor`) et démarre trois fils : **attente** (démarré en premier, seul propriétaire du processus), **lecture** (lots de 32 Kio, contrôle de flux) et **écriture** (file bornée à 64 saisies). La fermeture (`term_close`, `Drop`, verrouillage, rechargement) demande l'arrêt ; le fil d'attente tue alors le processus avant de l'avoir récupéré (SIGHUP, court délai, puis SIGKILL sous Linux ; `TerminateProcess` sous Windows), puis ferme le PTY hors du verrou. Un processus qui se termine seul envoie `disconnected` (`term.exited`) et se retire du registre `LocalTerminals` (32 au plus). Limites connues : un processus resté en arrière-plan (`cmd &`, `trap '' HUP`) peut survivre au shell et garder le PTY ouvert ; le fil de lecture de ce terminal reste alors bloqué jusqu'à sa fin.
 
 **Cycle de vie d'une session** : chaque session vit dans une tâche tokio annulable (`SessionHandle`), enregistrée dans `SessionManager` (64 au plus). Un déploiement de clé (`SessionHandle::spawn_deploy`) est une session sans terminal : il compte dans cette limite, se pilote par les mêmes commandes et se ferme au verrouillage (ADR-033). Elle se retire d'elle-même à l'événement `disconnected`. Tout verrouillage du coffre ferme toutes les sessions (voir ci-dessous).
 
@@ -397,10 +434,10 @@ stateDiagram-v2
     unlocked --> locked: vault_lock, inactivité ou rechargement
 ```
 
-- **Toute l'application est derrière le déverrouillage** (ADR-028) : `VaultGate` n'affiche le carnet, les terminaux et la connexion rapide qu'à l'état `unlocked`. `ssh_connect` et `ssh_connect_host` refusent de se connecter sur un coffre verrouillé (`vault.locked`), puisque les clés d'hôte connues sont dans le coffre (ADR-027).
+- **Toute l'application est derrière le déverrouillage** (ADR-028) : `VaultGate` n'affiche le carnet, les terminaux et la connexion rapide qu'à l'état `unlocked`. `ssh_connect` et `ssh_connect_host` refusent de se connecter sur un coffre verrouillé (`vault.locked`), puisque les clés d'hôte connues sont dans le coffre (ADR-027). `term_profiles` et `term_open` le refusent aussi (ADR-039) ; un terminal local enregistré pendant un verrouillage est refermé aussitôt.
 - **Création** : refusée si un coffre existe déjà (`vault.already_exists`) ou si seule la copie `.bak` existe (`vault.backup_only`) ; dans ce cas `vault_status` renvoie `missing` et l'utilisateur restaure la copie en la renommant. Un ancien fichier `known_hosts` en clair (étape 1) est repris dans le coffre, puis supprimé.
 - **Déverrouillage** : tentatives sérialisées dans `VaultState` ; après 3 échecs consécutifs, chaque tentative attend 1 s, 2 s, 4 s… jusqu'à 30 s. La vérification du mot de passe actuel dans `vault_change_password` partage ce compteur.
-- **Verrouillage** (`lock_everything`, ADR-026) : le coffre est verrouillé d'abord (DEK et secrets effacés de la mémoire), puis toutes les sessions sont fermées, avec leurs clients SFTP, transferts et éditions ; les dossiers locaux choisis sont oubliés. Une session enregistrée pendant ce temps revérifie l'état du coffre et se referme aussitôt. Déclencheurs : `vault_lock` (bouton de la barre latérale, Ctrl+Maj+L), minuteur d'inactivité, rechargement de la page (`PageLoadEvent::Started`).
+- **Verrouillage** (`lock_everything`, ADR-026) : le coffre est verrouillé d'abord (DEK et secrets effacés de la mémoire), puis toutes les sessions sont fermées, avec leurs clients SFTP, transferts et éditions, ainsi que tous les terminaux locaux (processus tués) ; les dossiers locaux choisis sont oubliés. Une session enregistrée pendant ce temps revérifie l'état du coffre et se referme aussitôt. Déclencheurs : `vault_lock` (bouton de la barre latérale, Ctrl+Maj+L), minuteur d'inactivité, rechargement de la page (`PageLoadEvent::Started`).
 - **Minuteur d'inactivité** (`lib.rs`, `vault_state.rs`) : tâche tokio qui vérifie toutes les 5 s. L'interface signale l'activité au clavier, à la souris ou à la molette par `vault_touch`, au plus toutes les 15 s. Le délai (dans le coffre, 15 min par défaut) est comparé à deux horloges, monotone et murale : la mise en veille compte, et une horloge murale qui recule n'empêche pas le verrouillage.
 - **Changement de mot de passe** : nouveau sel, nouvelle DEK, rechiffrement complet ; le `.bak` est ensuite recopié depuis le nouveau fichier, ou supprimé si la copie échoue (`SECURITE.md` §3.6).
 
@@ -600,8 +637,9 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 ### Journaux
 - Dossier `app_log_dir` de Tauri (`%LOCALAPPDATA%\<identifier>\logs\` sous Windows, `~/.local/share/<identifier>/logs/` sous Linux), créé en 0700 sous Linux.
 - Fichiers `younji.<date>.log`, rotation quotidienne, 7 fichiers au plus. En développement, les journaux sont aussi affichés sur la console. Si le dossier est inutilisable, repli sur la console (jamais sur un dossier temporaire partagé).
-- `YOUNJI_LOG` (`error` à `trace`, `info` par défaut) ne règle que le niveau du **code de Younji** : cibles `younji`, `younji_lib`, `core_ssh` et `core_vault` (`OWN_TARGETS` dans `logging.rs` ; chaque nouvelle crate `core_*` s'y ajoute). Les dépendances, dont `russh`, restent plafonnées à `warn`, pour qu'un niveau élevé ne fasse jamais journaliser des paquets réseau ou des arguments IPC.
+- `YOUNJI_LOG` (`error` à `trace`, `info` par défaut) ne règle que le niveau du **code de Younji** : cibles `younji`, `younji_lib`, `core_ssh`, `core_term` et `core_vault` (`OWN_TARGETS` dans `logging.rs` ; chaque nouvelle crate `core_*` s'y ajoute). Les dépendances, dont `russh`, restent plafonnées à `warn`, pour qu'un niveau élevé ne fasse jamais journaliser des paquets réseau ou des arguments IPC.
 - `core_ssh` journalise la cible (`utilisateur@hôte:port`) et la cause de fin de session au niveau `debug`, un changement de clé d'hôte au niveau `warn`. Le coffre journalise les verrouillages (avec leur cause), le nombre d'échecs de déverrouillage et les erreurs d'écriture, jamais un contenu.
+- Le terminal local ne journalise que le type de profil (`kind`), l'ouverture, la fermeture et les échecs de lancement, jamais un contenu, une commande ni le chemin du programme.
 - Le SFTP ne journalise ni nom de fichier, ni chemin, ni contenu : seulement des compteurs (bilan d'un transfert), des identifiants opaques et des codes d'erreur.
 - Aucun secret, aucun contenu de terminal, de coffre ni de fichier transféré (`SECURITE.md` §6).
 
@@ -609,14 +647,15 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 1. Les crates renvoient des erreurs `thiserror` précises. `SshError` (`core-ssh`) et `VaultError` (`core-vault`) ne transportent aucune donnée : ni secret, ni entrée utilisateur, ni texte du serveur.
 2. `src-tauri` les convertit en `AppError { code }`. Seul le code est sérialisé. Un test Rust vérifie que chaque code a sa traduction FR et EN.
    - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`. Ajoutés à l'étape 3 : `auth_prompt_invalid`, `auth_prompt_timeout`, `auth_cancelled`, `no_pending_prompt`, `invalid_answers`, `key_generation_failed`, `invalid_public_key`, `deploy_failed`. Ajoutés à l'étape 4 : `sftp_unavailable`, `sftp_failed`, `sftp_not_found`, `sftp_permission_denied`, `sftp_already_exists`, `sftp_not_directory`, `sftp_invalid_path`, `sftp_not_file`, `sftp_invalid_mode`, `sftp_unsafe_name`, `sftp_too_many_entries`, `local_io`, `local_outside_root`, `local_root_forbidden`, `transfer_cancelled`, `transfer_not_found`, `edit_too_large`, `edit_conflict`. Le texte d'état renvoyé par le serveur SFTP n'est jamais recopié : il est traduit en code.
-   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
+   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet`.
+   - `term.*` (`TermError`, étape 7) : `unknown_profile`, `invalid_size`, `input_too_large`, `spawn_failed`, `closed` ; plus `term.exited`, envoyé par `src-tauri` dans l'événement `disconnected` à la fin du processus. Un terminal local inconnu ou en surnombre reprend les codes `ssh.session_not_found` et `ssh.too_many_sessions`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
    - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal` ; depuis l'étape 4 : `sftp.not_found`, `sftp.too_many`, `sftp.edit_not_found`, `sftp.too_many_edits`, `local.root_unknown`, `editor.open_failed`.
 3. `src/lib/ipc.ts` normalise toute erreur reçue en `{ code }` ; un message brut n'est jamais propagé, et une erreur de forme inattendue devient `unknown`.
 4. L'interface affiche `t('errors.<code>')`. Le détail technique part dans les journaux, **sans secret**.
 
 ## 6. Interface
 - **Porte du coffre** (`features/vault/`) : au premier lancement, création du coffre (mot de passe et confirmation, indicateur de robustesse en direct, avertissement « aucune récupération possible ») ; ensuite, écran de déverrouillage, avec la cause du dernier verrouillage. Rien d'autre n'est affiché tant que le coffre est verrouillé.
-- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie.
+- Mise en page type Termius : barre latérale (Hôtes, Terminal local, Clés, Snippets, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie.
 - **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`).
 - **Clés** (`features/keys/`, KEY-01 à KEY-03, HST-03, HKY-04) : clés générées dans le coffre (`KeyGenerateDialog`, Ed25519 par défaut) ou importées (boîte de dialogue du système) ; renommage, copie et export `.pub` de la clé publique, déploiement sur un hôte du carnet (`KeyDeployDialog`, qui reprend les dialogues de clé d'hôte et de questions du serveur), suppression ; identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
 - **Onglets de session** (`stores/sessions.ts`, `TabBar`) : deux sortes d'onglets, `kind: 'terminal'` et `kind: 'sftp'` (voir SFTP ci-dessous). Ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` (↔ `authPrompt`) → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. En `authPrompt`, l'onglet affiche `AuthPromptDialog` : hôte qui pose les questions, texte du serveur encadré comme « Message envoyé par le serveur », rappel que Younji ne demande jamais le mot de passe maître ici ; réponses masquées sauf si le serveur autorise l'écho, champs vidés dès l'envoi. Le store garde la demande en attente, jamais les réponses. La connexion rapide propose un troisième mode, « Questions du serveur (2FA) », sans aucun secret saisi d'avance. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.
@@ -624,6 +663,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 - **Protections du terminal** : pas d'addon presse-papiers, donc les séquences OSC 52 restent sans effet ; garde de collage (`paste.ts`) qui retire les marqueurs de « bracketed paste » et demande confirmation, avec aperçu, pour un texte multiligne ou contenant des caractères de contrôle ; liens `http(s)` ouverts au Ctrl+clic, avec confirmation de l'adresse réelle pour les liens OSC 8 (`links.ts`, ADR-022).
 - **Panneaux** (SSH-07, ADR-035) : un onglet de terminal se découpe à droite (Ctrl+Maj+D) ou en bas (Ctrl+Maj+O), 8 panneaux au plus. Chaque panneau est une session à part (sa connexion, son `TerminalSession`, son panneau SFTP), rangée dans `tabs` avec `paneOf` = onglet qui l'affiche ; seul le panneau racine apparaît dans la barre d'onglets. `layouts[onglet]` garde l'arbre de disposition (`layout.ts` : feuilles = panneaux, nœuds `row` / `column` avec un ratio), `focusedPane[onglet]` le panneau actif. Un nouveau panneau reprend la cible du panneau d'origine (`split.ts`) : connexion directe pour un hôte du carnet, formulaire pré-rempli pour une connexion rapide. `SplitView` dessine l'arbre ; ses séparateurs se déplacent à la souris ou au clavier. Navigation par Ctrl+Maj+flèches (depuis un terminal), fermeture d'un panneau par Ctrl+Maj+X (le voisin prend la place ; si c'est le panneau racine, le suivant est promu onglet). Chaque panneau affiche en tête le nom de son serveur, et une barre d'outils (`PaneToolbar`) : découpe, snippets, diffusion, SFTP, fermeture.
 - **Diffusion de la saisie** (`features/broadcast/`, store `broadcast`, SSH-08, ADR-036) : activée par Ctrl+Maj+I ou la barre d'outils, après le dialogue `BroadcastDialog` (sessions connectées de tous les onglets, cochées une à une, nom et adresse, 2 au moins). `TerminalSession.handleInput` recopie la saisie d'une cible dans la file d'entrée de chaque cible ; les réponses automatiques d'xterm et les rapports souris binaires restent dans leur session. Un collage diffusé passe toujours par la confirmation. Indicateurs : `BroadcastBanner` en haut de la fenêtre, bordure rouge et en-tête « DIFFUSION » sur les cibles, pastille dans `TabBar`. Arrêt : bouton, Ctrl+Maj+I, verrouillage, moins de 2 cibles (une cible déconnectée est retirée).
+- **Terminal local** (`features/local/`, LOC-01, LOC-02, ADR-039) : section « Terminal local » de la barre latérale, qui appelle `term_profiles` à l'ouverture et sur « Actualiser », puis affiche les shells détectés (nom, famille, « par défaut »). « Ouvrir » crée un onglet `kind: 'terminal'` dont le champ `local` porte le profil (`openLocalTab`) ; `TerminalSession.openLocal` l'ouvre avec le **transport local** (`term_write`, `term_resize`, `term_ack`, `term_close`) au lieu du transport SSH. xterm.js, recherche, garde de collage, liens et découpe restent communs ; un panneau découpé rouvre le même profil. Un onglet local ne publie pas de `sessionId` (réservé aux sessions SSH) et n'offre ni panneau SFTP, ni snippet, ni diffusion (barre d'outils réduite à la découpe et à la fermeture). À la fin du shell, l'onglet propose « Relancer ».
 - **Snippets** (`features/snippets/`, SNP-01 à SNP-03, ADR-037) : section Snippets (liste, recherche, création, modification, suppression) ; la liste vient de `vault_snapshot`, l'enregistrement passe par `snippet_save` / `snippet_delete`. Ctrl+Maj+S ou la barre d'outils d'un panneau ouvre `SnippetPicker`, puis `SnippetRunDialog` : valeurs des variables (une ligne, validées), aperçu du texte final, sessions cochées, « Insérer » ou « Exécuter ». L'envoi passe par `TerminalSession.sendText`, vers les seules sessions cochées, sans diffusion. Les dialogues sont pilotés par le store `snippetRun`.
 - **SFTP** (`features/sftp/`, SFTP-01 à SFTP-05, ADR-034) :
   - **Panneau latéral** à droite du terminal, ouvert par un bouton ou Ctrl+Maj+E quand la session est connectée. Il **suit le dossier du shell** grâce à la séquence OSC 7 (`registerOscHandler(7)`, chemin décodé strictement par `osc7.ts` et rangé dans `remoteCwd`). Si le shell n'envoie pas OSC 7, le bouton « Activer le suivi » insère dans le terminal une intégration au prompt constante (bash, zsh), comme un collage et sans Entrée : l'utilisateur la relit et la valide.
@@ -650,6 +690,9 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 - **SFTP sans serveur** (`cargo test -p core-ssh`) : la logique est testée contre un faux système de fichiers en mémoire (`sftp/memfs.rs`, qui implémente `RemoteFs`) et un vrai dossier local temporaire : listage (noms impossibles écartés, suspects signalés), suppression récursive sans suivre les liens, renommage sans écrasement, chmod borné, dossier récursif avec accents, espaces et fichiers vides, noms malveillants qui n'écrivent jamais hors de la destination, liens distants non suivis, lien local planté remplacé et non suivi, politiques de conflit, annulation sans fichier partiel (local et distant), liens locaux non suivis à l'envoi, arborescences démesurées refusées, file (conflits, annulation), édition (renvoi, conflit, noms refusés, taille), nettoyage des copies abandonnées, Mark-of-the-Web. Côté `src-tauri` : désérialisation stricte des requêtes (aucun chemin absolu accepté), événements sans chemin local, registre (racines oubliées au verrouillage), éditeur imposé, traduction de chaque code. Côté interface (Vitest) : décodage OSC 7, intégration au prompt constante et jamais validée d'office, panneau, listes, file de transferts, dialogues.
 - **SFTP contre OpenSSH** : `sftp_round_trip_of_a_recursive_folder` (`openssh.rs`, `#[ignore]`) ouvre le SFTP sur une session, envoie un dossier (accents, espaces, fichier et dossier vides, fichier de 3 Mio), le liste, le retélécharge et compare le contenu octet par octet ; puis renommage sans écrasement, chmod, suppression récursive, et vérifie que le SFTP ne répond plus après la fin de la session.
 - **Serveur de test** : `tests/docker/sshd/` (Debian 12 épinglée par empreinte, OpenSSH, sous-système SFTP fourni par `openssh-sftp-server`). Aucun secret dans l'image : le mot de passe arrive par un fichier d'environnement, les clés autorisées par un volume en lecture seule, et les clés d'hôte sont régénérées à chaque démarrage.
+
+### Tests du terminal local
+`cargo test -p core-term` : détection Linux à partir d'un `/etc/shells` factice (un profil par nom, `$SHELL` retenu seulement s'il est listé et absolu, programmes absents ignorés, liste de repli), décodage UTF-16 de la sortie de `wsl.exe -l -q` (BOM, doublons, `docker-desktop` écarté), validation des noms de distribution, nom passé en argument séparé ; session réelle `/bin/sh` (commande exécutée et fin signalée, taille transmise, fermeture qui tue le programme une seule fois, y compris un programme qui ignore SIGHUP, saisie trop grande refusée, lecture suspendue sans acquittement, programme absent). Côté `src-tauri` : profil et terminal inconnus refusés, traduction de chaque code `term.*`. Côté interface (Vitest) : liste des profils, ouverture par le seul identifiant, saisie, acquittement et fermeture par `term_*` et jamais `ssh_*`, relance, session terminée avant le retour de l'identifiant, découpe, absence de SFTP, de snippet et de diffusion.
 
 ### `ci.yml` (Linux, à chaque push et PR)
 Permissions en lecture seule, actions épinglées par SHA, `persist-credentials: false`. Cinq jobs :
