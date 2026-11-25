@@ -3,7 +3,7 @@
 Chaque étape produit une application **testable**. On ne passe à l'étape suivante qu'après les retours de test du porteur.
 Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 
-**Légende** : ⬜ à faire · 🟨 en cours · ✅ terminée (testée et validée par le porteur)
+**Légende** : ⬜ à faire · 🟨 en cours · ✅ terminée (testée et validée par le porteur) · ❌ retirée
 
 | # | Étape | Statut |
 |---|---|---|
@@ -13,7 +13,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 3 | 2FA et générateur de clés | ✅ |
 | 4 | SFTP | ✅ |
 | 5 | Split, snippets, diffusion multi-sessions | ✅ |
-| 6 | Tunnels SSH | ⬜ |
+| 6 | ~~Tunnels SSH~~ (retirée, ADR-038) | ❌ |
 | 7 | Terminal local | ⬜ |
 | 8 | RDP v1 (client système) | ⬜ |
 | 9 | Import OpenSSH, export/import chiffré | ⬜ |
@@ -141,14 +141,10 @@ Contenu : split horizontal/vertical (SSH-07), snippets avec variables (SNP-01 à
 
 ---
 
-## Étape 6 — Tunnels SSH
-Contenu : `-L`, `-R`, `-D` (SOCKS5), gestionnaire de tunnels, `127.0.0.1` par défaut avec avertissement pour `0.0.0.0`. TUN-01 à TUN-03.
+## Étape 6 — Tunnels SSH (retirée)
+Retirée par le porteur le 25/11/2026 (ADR-038) : fonction jugée non nécessaire et trop complexe pour le début du projet. Les tunnels passent dans le hors périmètre du cahier des charges (§2.3). Le numéro 6 n'est pas réattribué, pour ne pas décaler les références aux étapes suivantes.
 
-**Critères d'acceptation**
-- [ ] `-L` : un service web qui écoute sur `127.0.0.1:8080` dans la VM est joignable depuis le PC.
-- [ ] `-D` : Firefox configuré avec le proxy SOCKS navigue via la VM.
-- [ ] `-R` : un service du PC est joignable depuis la VM.
-- [ ] L'état et le nombre de connexions sont visibles. L'arrêt libère le port.
+Le travail réalisé (`-L`, `-R`, `-D` SOCKS5, gestionnaire, confirmation native de l'exposition) reste consultable sur la branche `etape/6-tunnels` et dans la PR fermée mlft9/younji#14, s'il faut un jour le reprendre.
 
 ---
 
@@ -275,13 +271,13 @@ Points de vigilance :
 
 ## Étape 16 — Garde-fous de session
 **But** : réduire les erreurs humaines (mauvais serveur, commande de trop, secret collé au mauvais endroit).
-**Dépend de** : 2. La coupure des tunnels du bouton panique s'active dès que l'étape 6 est livrée.
+**Dépend de** : 2.
 
 Contenu :
 - **Étiquettes d'environnement (G1)** : prod, préprod, lab… avec une couleur visible sur l'onglet, la bordure du terminal et la barre de titre.
 - **Confirmation des commandes dangereuses (G2)** : `rm -rf`, `shutdown`, `reboot`, `iptables -F`, `DROP TABLE`… demandent une confirmation sur un hôte étiqueté prod. Liste modifiable.
 - **Alerte anti-fuite au collage (G3)** : avertissement quand le texte collé ressemble à un mot de passe, une clé privée ou un jeton d'API.
-- **Bouton panique (S7)** : un raccourci ferme toutes les sessions, coupe les tunnels et verrouille le coffre.
+- **Bouton panique (S7)** : un raccourci ferme toutes les sessions et verrouille le coffre.
 - **Verrouillage lié à la session Windows (S8)** : le coffre se verrouille quand Windows est verrouillé ou que le PC se met en veille (et l'équivalent sous Linux quand il est disponible).
 
 Points de vigilance :
@@ -292,7 +288,7 @@ Points de vigilance :
 - [ ] Un hôte étiqueté prod est identifiable d'un coup d'œil, dans tous les onglets et panneaux.
 - [ ] `sudo reboot` tapé sur un hôte prod demande une confirmation. Sur un hôte lab, rien.
 - [ ] Coller une clé privée de test dans le terminal déclenche l'alerte avant l'envoi.
-- [ ] Le bouton panique laisse l'application verrouillée, sans session ni tunnel ouvert.
+- [ ] Le bouton panique laisse l'application verrouillée, sans session ouverte.
 - [ ] Verrouiller Windows (Win+L) verrouille le coffre.
 
 ---
@@ -326,7 +322,7 @@ Contenu :
 - **Mode présentation (C1)** : masquage automatique des IP, noms d'hôtes et utilisateurs à l'écran, y compris dans le contenu du terminal, avec un indicateur visible quand le mode est actif.
 - **Notification de fin de commande (E3)** : notification système quand une commande longue se termine dans un onglet inactif.
 - **Sessions qui survivent aux coupures (E4)** : intégration de tmux en option, pour retrouver son travail après une perte de connexion.
-- **Palette de commandes (E5)** : `Ctrl+K` pour tout faire au clavier (se connecter, ouvrir un tunnel, lancer un snippet, changer de thème).
+- **Palette de commandes (E5)** : `Ctrl+K` pour tout faire au clavier (se connecter, lancer un snippet, changer de thème).
 - **Menus contextuels de l'application** (retour de recette de l'étape 5) : un menu clic droit propre à Younji sur les éléments de l'interface (hôte du carnet : se connecter, ouvrir en SFTP, modifier ; onglet : renommer, fermer, diviser ; champs de saisie : couper, copier, coller), à la place du menu natif de la WebView, bloqué depuis l'étape 5 hors des champs de saisie.
 
 Points de vigilance :

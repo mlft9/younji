@@ -59,7 +59,7 @@ Traits pleins : en place. Pointillés : à venir.
 │   ├── components/
 │   │   ├── layout/               AppShell (avec bandeau de diffusion), Sidebar (avec bouton « Verrouiller »),
 │   │   │                         TabBar (onglets de terminal et SFTP, nombre de panneaux, pastille de
-│   │   │                         diffusion), SectionPlaceholder (Tunnels)
+│   │   │                         diffusion)
 │   │   ├── ui/                   Composants de base (button, avec variante destructive ; input, modal, native-select)
 │   │   ├── ConfirmDialog.tsx     Confirmation générique (bouton rouge pour une action destructrice)
 │   │   ├── SessionChecklist.tsx  Sessions à cocher, avec nom et adresse (diffusion, envoi de snippet)
@@ -202,7 +202,7 @@ Traits pleins : en place. Pointillés : à venir.
 └── rust-toolchain.toml           Toolchain stable + rustfmt + clippy
 ```
 
-À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape ; `core-ssh` s'enrichira des tunnels (étape 6). Côté interface, `features/` accueillera `tunnels/`.
+À venir : `core-term` (étape 7), `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape. Les tunnels SSH (ancienne étape 6) sont retirés du périmètre (ADR-038).
 
 ### Dépendances principales ajoutées à l'étape 1
 | Dépendance | Rôle | Note |
@@ -257,7 +257,7 @@ Les futures crates `core-term`, `core-import` et `core-rdp` suivront la même r�
 | Mécanisme | Usage | Exemple |
 |---|---|---|
 | `invoke()` (commande) | Action ponctuelle avec un résultat | `app_info`, `ssh_connect`, `vault_unlock`, `host_save` |
-| `Channel<T>` passé en argument | Flux ou notification ciblée | Sortie et état d'une session SSH ; verrouillage du coffre (`vault_watch`) ; transferts et éditions SFTP (`sftp_open`, `sftp_edit`) ; plus tard état d'un tunnel |
+| `Channel<T>` passé en argument | Flux ou notification ciblée | Sortie et état d'une session SSH ; verrouillage du coffre (`vault_watch`) ; transferts et éditions SFTP (`sftp_open`, `sftp_edit`) |
 
 Aucun événement global de Tauri n'est utilisé : la permission `core:event:*` n'est pas accordée à la fenêtre (ADR-028).
 
@@ -586,7 +586,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 
 | Fichier | Contenu | Protection | Disponible |
 |---|---|---|---|
-| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037) ; plus tard tunnels | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
+| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037) | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
 | `vault.younji.bak` | Version précédente du coffre | Chiffré. Copié de façon atomique avant chaque remplacement ; recopié depuis le nouveau fichier après un changement de mot de passe, ou supprimé si la copie échoue | Oui (étape 2) |
 | `edits/` (dans `app_local_data_dir`) | Copies temporaires des fichiers distants ouverts en édition (`younji-edit-*`) | Dossier 0700, fichier 0600 sous Linux. Supprimées à la fin de l'édition, de la session et au verrouillage ; copies abandonnées depuis plus de 24 h supprimées au démarrage | Oui (étape 4) |
 | `settings.json` | Langue, thème, taille de police du terminal | En clair, **aucune donnée sensible** (il doit être lisible avant le déverrouillage). Écriture atomique ; lecture limitée à 64 Kio ; chaque valeur relue est validée, une valeur inattendue reprend sa valeur par défaut | Oui (étape 2) |
@@ -616,7 +616,7 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 
 ## 6. Interface
 - **Porte du coffre** (`features/vault/`) : au premier lancement, création du coffre (mot de passe et confirmation, indicateur de robustesse en direct, avertissement « aucune récupération possible ») ; ensuite, écran de déverrouillage, avec la cause du dernier verrouillage. Rien d'autre n'est affiché tant que le coffre est verrouillé.
-- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie ; Tunnels affiche encore un emplacement réservé.
+- Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie.
 - **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`).
 - **Clés** (`features/keys/`, KEY-01 à KEY-03, HST-03, HKY-04) : clés générées dans le coffre (`KeyGenerateDialog`, Ed25519 par défaut) ou importées (boîte de dialogue du système) ; renommage, copie et export `.pub` de la clé publique, déploiement sur un hôte du carnet (`KeyDeployDialog`, qui reprend les dialogues de clé d'hôte et de questions du serveur), suppression ; identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
 - **Onglets de session** (`stores/sessions.ts`, `TabBar`) : deux sortes d'onglets, `kind: 'terminal'` et `kind: 'sftp'` (voir SFTP ci-dessous). Ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` (↔ `authPrompt`) → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. En `authPrompt`, l'onglet affiche `AuthPromptDialog` : hôte qui pose les questions, texte du serveur encadré comme « Message envoyé par le serveur », rappel que Younji ne demande jamais le mot de passe maître ici ; réponses masquées sauf si le serveur autorise l'écho, champs vidés dès l'envoi. Le store garde la demande en attente, jamais les réponses. La connexion rapide propose un troisième mode, « Questions du serveur (2FA) », sans aucun secret saisi d'avance. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.

@@ -11,7 +11,7 @@ paths:
 - La logique métier va dans `crates/core-*` : aucune dépendance à `tauri` dans ces crates.
 - `src-tauri/src/commands/` : une commande = une fonction fine qui valide l'entrée, appelle une crate et convertit l'erreur. Pas de logique métier.
 - L'état partagé passe par `tauri::State` avec des types dédiés (`SessionManager`, `VaultState`…). Pas de `static mut` ni de globals.
-- Les flux continus (sortie du terminal, progression SFTP, état des tunnels) passent par `tauri::ipc::Channel<T>` reçu en paramètre de commande, pas par des événements globaux.
+- Les flux continus (sortie du terminal, progression SFTP) passent par `tauri::ipc::Channel<T>` reçu en paramètre de commande, pas par des événements globaux.
 
 ## Erreurs
 - Dans les crates : `thiserror`, avec des variantes précises. Dans `src-tauri` : conversion en `AppError { code: &'static str, … }` sérialisable, dont le `code` correspond à une clé i18n (`errors.<code>`).
@@ -20,7 +20,7 @@ paths:
 
 ## Async et ressources
 - `tokio` multi-thread. Ne bloque jamais l'exécuteur : I/O fichiers lourdes et crypto coûteuse (Argon2) dans `spawn_blocking`.
-- Chaque session et chaque tunnel a une tâche propriétaire, annulable (`CancellationToken`). Libère les ressources à la fermeture.
+- Chaque session a une tâche propriétaire, annulable (`CancellationToken`). Libère les ressources à la fermeture.
 - Flux bornés : canaux avec capacité, regroupement de la sortie du terminal (lots de quelques ms) pour ne pas saturer l'IPC.
 
 ## Secrets

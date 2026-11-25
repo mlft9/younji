@@ -8,7 +8,7 @@
 |---|---|
 | Mots de passe, clés privées, passphrases, codes OTP | Accès direct aux serveurs |
 | Liste des hôtes, utilisateurs, groupes, notes | Cartographie de l'infrastructure, utile à un attaquant |
-| Sessions ouvertes et tunnels | Accès en cours, pivot réseau |
+| Sessions ouvertes | Accès en cours, pivot réseau |
 | Intégrité des connexions | Une attaque de l'homme du milieu permet de voler des identifiants et de lire ou modifier la session |
 | Intégrité de l'application et des mises à jour | Une application piégée a accès à tout |
 
@@ -21,7 +21,7 @@
 | M4 | Dépendance npm compromise exécutée dans la WebView | Secrets absents de la WebView, CSP, capabilities minimales, `cargo-deny` / `npm audit` (§5, §8) |
 | M5 | Fuite par effet de bord : journaux, liste des processus, messages d'erreur, fichiers temporaires, presse-papiers | Règles du §6 |
 | M6 | Mise à jour piégée | Mises à jour signées, clé privée hors du dépôt (§7) |
-| M7 | Erreur de manipulation : tunnel exposé, diffusion vers les mauvais serveurs | Valeurs par défaut sûres, avertissements visibles (§6) |
+| M7 | Erreur de manipulation : diffusion vers les mauvais serveurs | Valeurs par défaut sûres, avertissements visibles (§6) |
 
 **Hors du modèle** : un malware qui tourne sur la machine avec les droits de l'utilisateur **pendant que le coffre est déverrouillé** (keylogger, lecture de la mémoire). On réduit l'exposition (verrouillage automatique, effacement de la mémoire), mais on ne peut pas s'en protéger complètement. Il faut le dire honnêtement dans la documentation publique.
 
@@ -125,6 +125,8 @@ Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de pa
 - **v2 (IronRDP)** : le certificat du serveur est vérifié en TOFU, avec la même logique que les clés d'hôte SSH. NLA (CredSSP) est exigé par défaut.
 
 ### 4.4 Tunnels
+> Sans objet pour l'instant : la fonction tunnels est retirée (ADR-038). Ces règles restent en vigueur et s'appliqueraient telles quelles si elle revenait.
+
 Écoute sur `127.0.0.1` par défaut. Écouter sur `0.0.0.0` demande une confirmation explicite et affiche un indicateur permanent dans la liste des tunnels.
 
 ## 5. Durcissement de l'application Tauri

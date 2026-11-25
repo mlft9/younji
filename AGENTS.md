@@ -22,7 +22,7 @@ Projet personnel / portfolio orienté **cybersécurité** : la sécurité est un
 ```
 src/                 Interface React (composants, stores zustand, locales fr/en, lib/ipc.ts)
 src-tauri/           Application Tauri : commandes fines, état, capabilities, config
-crates/core-ssh/     SSH, clés d'hôte, SFTP, tunnels (sans dépendance à Tauri)
+crates/core-ssh/     SSH, clés d'hôte, SFTP (sans dépendance à Tauri)
 crates/core-vault/   Coffre chiffré et modèle de données
 crates/core-term/    Terminal local (PTY)
 crates/core-import/  Import ~/.ssh/config, known_hosts

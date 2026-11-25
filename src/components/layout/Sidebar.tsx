@@ -1,5 +1,4 @@
 import {
-  ArrowLeftRight,
   FolderTree,
   KeyRound,
   Lock,
@@ -20,7 +19,6 @@ const ITEMS: readonly { section: Section; icon: LucideIcon }[] = [
   { section: 'hosts', icon: Server },
   { section: 'keys', icon: KeyRound },
   { section: 'snippets', icon: SquareCode },
-  { section: 'tunnels', icon: ArrowLeftRight },
   { section: 'sftp', icon: FolderTree },
 ];
 

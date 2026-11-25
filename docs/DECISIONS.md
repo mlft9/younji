@@ -6,7 +6,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | ADR | Sujet | Statut |
 |---|---|---|
 | 001 | Tauri 2 comme socle applicatif | Acceptée |
-| 002 | russh pour SSH, SFTP et tunnels | Acceptée |
+| 002 | russh pour SSH, SFTP et tunnels | Acceptée (tunnels retirés : ADR-038) |
 | 003 | Stack frontend | Acceptée |
 | 004 | Logique métier dans des crates indépendantes de Tauri | Acceptée |
 | 005 | Schéma cryptographique du coffre | Acceptée |
@@ -39,6 +39,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 032 | Clés générées dans le coffre, sans passphrase ni export de la clé privée | Acceptée, prise en autonomie, à relire ; écart à KEY-01 à trancher |
 | 033 | Déploiement de clé par commande `sh` constante et entrée standard | Acceptée, prise en autonomie, à relire |
 | 034 | SFTP sur la connexion du terminal, dossiers locaux désignés par identifiant, éditeur imposé | Acceptée, prise en autonomie, à relire |
+| 038 | Retrait des tunnels SSH (étape 6) | Acceptée |
 
 ---
 
@@ -520,3 +521,21 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Le contenu étant revérifié au chargement, **durcir une règle plus tard** (taille, caractères admis) exigera une migration, ou d'écarter les snippets devenus invalides, pour ne pas rendre un coffre existant illisible.
 - Une valeur de variable peut contenir des métacaractères du shell (`;`, `$( )`) : c'est voulu, l'aperçu les montre.
 - Le champ `snippets` est toujours écrit, même vide : un coffre enregistré une fois par cette version n'est plus lisible par une version antérieure à l'étape 5 (refus propre, sans perte).
+
+## ADR-038 — Retrait des tunnels SSH (étape 6)
+**Statut** : Acceptée (25/11/2026) — décision du porteur. Retire TUN-01 à TUN-03 et l'étape 6 ; ADR-002 reste valable pour SSH et SFTP.
+**Contexte** : l'étape 6 (redirections `-L`, `-R`, `-D`/SOCKS5, gestionnaire de tunnels) a été réalisée sur la branche `etape/6-tunnels` (PR mlft9/younji#14). Le porteur la juge non nécessaire et trop complexe pour le début du projet : nouvelle surface réseau (écoutes sur le poste, proxy SOCKS, canaux ouverts par le serveur), confirmation native de l'exposition, recette lourde.
+**Décision** :
+- La PR est fermée sans fusion ; la branche `etape/6-tunnels` est conservée comme archive.
+- TUN-01 à TUN-03 passent dans le hors périmètre du cahier des charges (§2.3). La section « Tunnels » de la barre latérale, qui n'affichait qu'un emplacement réservé, est supprimée.
+- L'étape 6 est marquée ❌ dans la feuille de route ; son numéro n'est pas réattribué, pour ne pas décaler les références aux étapes suivantes (16, 18…).
+- Les règles de `SECURITE.md` §4.4 sont conservées, signalées comme sans objet tant que la fonction est absente : elles s'appliqueraient telles quelles à son retour.
+
+**Alternatives écartées** :
+- Fusionner puis masquer la fonction : du code et des permissions IPC inutilisés, donc de la surface d'attaque sans bénéfice.
+- Renuméroter les étapes : casse les références croisées (ROADMAP, ADR, plans) pour un gain nul.
+
+**Conséquences** :
+- Moins de surface d'attaque : aucune écoute réseau ouverte par l'application, aucune permission IPC de tunnel.
+- Le bouton panique (étape 16) et la palette de commandes (étape 18) ne mentionnent plus les tunnels.
+- Pour rouvrir le sujet, un nouvel ADR remplacera celui-ci ; la branche archivée sert de point de départ (revue de sécurité déjà passée, verdict OK).
