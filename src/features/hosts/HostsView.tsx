@@ -1,6 +1,7 @@
 import {
   Folder,
   FolderPlus,
+  Monitor,
   Pencil,
   Play,
   Plus,
@@ -17,7 +18,7 @@ import { NameDialog } from '@/components/NameDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ErrorMessage } from '@/features/connect/ErrorMessage';
-import { groupDelete, groupSave, hostDelete, toAppError } from '@/lib/ipc';
+import { groupDelete, groupSave, hostDelete, rdpLaunch, toAppError } from '@/lib/ipc';
 import type { GroupEntry, HostEntry } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useSessions } from '@/stores/sessions';
@@ -46,6 +47,8 @@ export function HostsView() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Message d'information après l'ouverture d'un hôte RDP. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   const visible = filterHosts(snapshot.hosts, filter, query);
   const selectedGroup =
@@ -66,7 +69,27 @@ export function HostsView() {
   }
 
   function connect(host: HostEntry) {
-    openHost(host, snapshot.identities);
+    if (host.protocol.kind === 'rdp') {
+      void launchRdp(host);
+    } else {
+      openHost(host, snapshot.identities);
+    }
+  }
+
+  /** Hôte RDP : le cœur lance le client du système avec l'identité du coffre (RDP-02). */
+  async function launchRdp(host: HostEntry) {
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await rdpLaunch(host.id);
+      setNotice(
+        t(result.existingCredential ? 'hosts.rdpExistingCredential' : 'hosts.rdpLaunched', {
+          name: host.name,
+        }),
+      );
+    } catch (failure) {
+      setError(toAppError(failure).code);
+    }
   }
 
   const groupButton = (target: GroupFilter, label: string, count: number) => (
@@ -198,6 +221,11 @@ export function HostsView() {
         </div>
 
         {error && <ErrorMessage code={error} />}
+        {notice && (
+          <p role="status" className="rounded-md border bg-muted/50 px-3 py-2 text-sm">
+            {notice}
+          </p>
+        )}
 
         {visible.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
@@ -227,13 +255,24 @@ export function HostsView() {
                       }
                     }}
                   >
-                    <Server aria-hidden="true" className="size-4 shrink-0 opacity-70" />
+                    {host.protocol.kind === 'rdp' ? (
+                      <Monitor aria-hidden="true" className="size-4 shrink-0 opacity-70" />
+                    ) : (
+                      <Server aria-hidden="true" className="size-4 shrink-0 opacity-70" />
+                    )}
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate text-sm font-medium">{host.name}</span>
                       <span className="truncate font-mono text-xs text-muted-foreground">
                         {user ? `${user}@` : ''}
                         {host.address}
-                        {host.port === 22 ? '' : `:${String(host.port)}`}
+                        {host.port === (host.protocol.kind === 'rdp' ? 3389 : 22)
+                          ? ''
+                          : `:${String(host.port)}`}
+                        {host.protocol.kind === 'rdp' && (
+                          <span className="ml-2 rounded bg-muted px-1 font-sans">
+                            {t('hosts.rdpBadge')}
+                          </span>
+                        )}
                       </span>
                     </span>
                     {host.tags.length > 0 && (
@@ -254,7 +293,7 @@ export function HostsView() {
                     variant="ghost"
                     className="size-8"
                     aria-label={t('hosts.connectTo', { name: host.name })}
-                    title={t('hosts.connect')}
+                    title={t(host.protocol.kind === 'rdp' ? 'hosts.openRdp' : 'hosts.connect')}
                     onClick={() => {
                       connect(host);
                     }}

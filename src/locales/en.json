@@ -414,8 +414,22 @@
       "group": "Group",
       "tags": "Tags",
       "tagsPlaceholder": "prod, web, lab (comma-separated)",
-      "notes": "Notes"
-    }
+      "notes": "Notes",
+      "protocol": "Protocol",
+      "protocolSsh": "SSH (terminal, SFTP)",
+      "protocolRdp": "RDP (Windows desktop, system client)",
+      "rdpSettings": "RDP settings",
+      "domain": "Domain",
+      "domainPlaceholder": "optional, e.g. LAB",
+      "fullscreen": "Full screen",
+      "width": "Width (px)",
+      "height": "Height (px)",
+      "rdpNoIdentityHint": "Without an identity, mstsc asks for the password on Windows; on Linux, an identity with a password is required."
+    },
+    "openRdp": "Open over RDP",
+    "rdpLaunched": "{{name}}: RDP client started. The password was passed without using the command line.",
+    "rdpExistingCredential": "{{name}}: RDP client started with the credential already saved in Windows for this server (Younji did not change it).",
+    "rdpBadge": "RDP"
   },
   "keys": {
     "title": "Private keys",

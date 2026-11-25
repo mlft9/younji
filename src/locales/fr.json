@@ -414,8 +414,22 @@
       "group": "Groupe",
       "tags": "Étiquettes",
       "tagsPlaceholder": "prod, web, lab (séparées par des virgules)",
-      "notes": "Notes"
-    }
+      "notes": "Notes",
+      "protocol": "Protocole",
+      "protocolSsh": "SSH (terminal, SFTP)",
+      "protocolRdp": "RDP (bureau Windows, client du système)",
+      "rdpSettings": "Réglages RDP",
+      "domain": "Domaine",
+      "domainPlaceholder": "facultatif, ex. LAB",
+      "fullscreen": "Plein écran",
+      "width": "Largeur (px)",
+      "height": "Hauteur (px)",
+      "rdpNoIdentityHint": "Sans identité, le mot de passe est demandé par mstsc sous Windows ; sous Linux, une identité avec mot de passe est nécessaire."
+    },
+    "openRdp": "Ouvrir en RDP",
+    "rdpLaunched": "{{name}} : client RDP lancé. Le mot de passe a été transmis sans passer par la ligne de commande.",
+    "rdpExistingCredential": "{{name}} : client RDP lancé avec l'identifiant déjà enregistré dans Windows pour ce serveur (Younji ne l'a pas modifié).",
+    "rdpBadge": "RDP"
   },
   "keys": {
     "title": "Clés privées",

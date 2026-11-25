@@ -15,6 +15,7 @@ vi.mock('@/lib/ipc', async (importOriginal) => {
   return {
     ...actual,
     hostSave: vi.fn().mockResolvedValue('nouvel-id'),
+    rdpLaunch: vi.fn().mockResolvedValue({ existingCredential: false }),
     hostDelete: vi.fn().mockResolvedValue(undefined),
     groupSave: vi.fn().mockResolvedValue('g-new'),
     groupDelete: vi.fn().mockResolvedValue(undefined),
@@ -34,6 +35,7 @@ function host(partial: Partial<HostEntry>): HostEntry {
     groupId: null,
     tags: [],
     notes: '',
+    protocol: { kind: 'ssh' },
     ...partial,
   };
 }
@@ -137,6 +139,7 @@ describe('carnet d’hôtes', () => {
       groupId: 'g-lab',
       tags: ['stockage', 'lab'],
       notes: '',
+      protocol: { kind: 'ssh' },
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -177,5 +180,69 @@ describe('carnet d’hôtes', () => {
       within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Supprimer' }),
     );
     expect(await screen.findByRole('alert')).toHaveTextContent("Cet élément n'existe plus.");
+  });
+
+  it('crée un hôte RDP avec domaine et résolution', async () => {
+    const user = userEvent.setup();
+    render(<HostsView />);
+    await user.click(screen.getByRole('button', { name: 'Nouvel hôte' }));
+    const dialog = screen.getByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Protocole'), 'rdp');
+    expect(within(dialog).getByLabelText('Port')).toHaveValue('3389');
+    await user.type(within(dialog).getByLabelText('Adresse'), 'win11.lab');
+    await user.selectOptions(within(dialog).getByLabelText('Identité'), 'i-1');
+    await user.type(within(dialog).getByLabelText('Domaine'), 'LAB');
+    await user.click(within(dialog).getByLabelText('Plein écran'));
+    await user.clear(within(dialog).getByLabelText('Largeur (px)'));
+    await user.type(within(dialog).getByLabelText('Largeur (px)'), '1280');
+    await user.clear(within(dialog).getByLabelText('Hauteur (px)'));
+    await user.type(within(dialog).getByLabelText('Hauteur (px)'), '800');
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    expect(ipc.hostSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: 'win11.lab',
+        port: 3389,
+        protocol: {
+          kind: 'rdp',
+          domain: 'LAB',
+          resolution: { mode: 'fixed', width: 1280, height: 800 },
+        },
+      }),
+    );
+  });
+
+  it('refuse un domaine RDP qui pourrait injecter une option', async () => {
+    const user = userEvent.setup();
+    render(<HostsView />);
+    await user.click(screen.getByRole('button', { name: 'Nouvel hôte' }));
+    const dialog = screen.getByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Protocole'), 'rdp');
+    await user.type(within(dialog).getByLabelText('Adresse'), 'win11.lab');
+    await user.selectOptions(within(dialog).getByLabelText('Identité'), 'i-1');
+    await user.type(within(dialog).getByLabelText('Domaine'), '/p:x');
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    expect(ipc.hostSave).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('ouvre un hôte RDP dans le client du système, sans onglet de terminal', async () => {
+    const user = userEvent.setup();
+    const rdpHost: HostEntry = host({
+      id: 'h-rdp',
+      name: 'Poste Windows',
+      address: 'win11.lab',
+      port: 3389,
+      identityId: 'i-1',
+      protocol: { kind: 'rdp', domain: '', resolution: { mode: 'fullscreen' } },
+    });
+    useVault.setState({
+      status: 'unlocked',
+      snapshot: { ...SNAPSHOT, hosts: [...SNAPSHOT.hosts, rdpHost] },
+    });
+    render(<HostsView />);
+    await user.dblClick(screen.getByText('Poste Windows'));
+    expect(ipc.rdpLaunch).toHaveBeenCalledWith('h-rdp');
+    expect(openHost).not.toHaveBeenCalled();
+    expect(await screen.findByRole('status')).toHaveTextContent('Poste Windows');
   });
 });
