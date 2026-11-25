@@ -1,7 +1,7 @@
 //! Gestionnaire d'identifiants de Windows (SECURITE.md §4.3, ADR-040).
 //!
-//! Seul module de Younji autorisé à utiliser `unsafe` : trois appels Win32 (`CredWriteW`,
-//! `CredReadW` + `CredFree`, `CredDeleteW`). L'identifiant est de type
+//! Seul module de Younji autorisé à utiliser `unsafe` : appels Win32 `CredWriteW`,
+//! `CredReadW`, `CredEnumerateW` (+ `CredFree`) et `CredDeleteW`. L'identifiant est de type
 //! `CRED_TYPE_DOMAIN_PASSWORD` : son mot de passe n'est utilisable que par LSA (mstsc via
 //! CredSSP) et **n'est pas relisible** par `CredRead` depuis un autre programme. Persistance
 //! `CRED_PERSIST_SESSION` : jamais écrit sur disque ni itinérant, perdu à la déconnexion de la

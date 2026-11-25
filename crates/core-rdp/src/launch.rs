@@ -333,8 +333,13 @@ fn spawn_mstsc(
                 active.release(&name);
                 existing = true;
             }
-            // Aucun, ou reste d'une exécution interrompue de Younji : (ré)écrit puis supprimé.
-            Existing::None | Existing::Younji => {
+            // Identifiant marqué par une **autre** instance de Younji (les restes d'un arrêt
+            // brutal sont supprimés au démarrage) : ne pas l'écraser avec un autre compte.
+            Existing::Younji => {
+                active.release(&name);
+                return Err(RdpError::Busy);
+            }
+            Existing::None => {
                 cleanup.credential = Some(name.clone());
                 let username = if target.domain().is_empty() || target.username_has_domain() {
                     target.username().to_owned()

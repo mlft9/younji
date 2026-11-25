@@ -76,3 +76,4 @@ Références : `SECURITE.md` §4.3, §6 (processus externes) ; ADR-007 (RDP en d
 - **Deux lancements simultanés vers le même serveur (Faible)** : refusé (`rdp.busy`) tant que l'identifiant temporaire du premier existe.
 - **Nom d'utilisateur `LAB\LAB\alice` (Faible)** : le domaine n'est ajouté que si l'utilisateur n'en porte pas déjà un.
 - **Numéro d'ADR** : l'ADR annoncé au §6 (unsafe dans `core-rdp`) prend le numéro ADR-040, l'ADR-039 étant pris par l'étape 7.
+- **Plusieurs instances de Younji (Faible, contre-revue)** : un identifiant marqué trouvé au lancement appartient forcément à une autre instance en cours (les restes d'un arrêt brutal sont supprimés au démarrage) : le lancement est refusé (`rdp.busy`) au lieu de l'écraser avec un autre compte.
