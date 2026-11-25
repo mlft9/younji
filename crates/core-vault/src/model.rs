@@ -223,6 +223,11 @@ pub struct VaultData {
     /// Snippets (étape 5). Absent des coffres créés avant l'étape 5 : liste vide par défaut.
     #[serde(default)]
     snippets: Vec<Snippet>,
+    /// Tunnels enregistrés par les versions de test de l'étape 6, retirée (ADR-038). Le champ
+    /// est accepté à la lecture puis oublié, et jamais réécrit : sans lui, ces coffres seraient
+    /// refusés (`deny_unknown_fields`). Le contenu n'est ni interprété ni conservé.
+    #[serde(default, rename = "tunnels", skip_serializing)]
+    _legacy_tunnels: serde::de::IgnoredAny,
 }
 
 impl fmt::Debug for VaultData {
@@ -248,6 +253,7 @@ impl Default for VaultData {
             known_hosts: String::new(),
             settings: VaultSettings::default(),
             snippets: Vec::new(),
+            _legacy_tunnels: serde::de::IgnoredAny,
         }
     }
 }
@@ -832,6 +838,36 @@ mod tests {
             tags: vec!["lab".into()],
             notes: String::new(),
         }
+    }
+
+    /// Contenu d'un coffre écrit par une version de test de l'étape 6 (tunnels, retirée par
+    /// ADR-038) : il est lu, le champ est oublié et n'est jamais réécrit.
+    #[test]
+    fn legacy_tunnels_are_read_then_forgotten() {
+        let mut json = serde_json::to_value(VaultData::default()).unwrap();
+        json["tunnels"] = serde_json::json!([{
+            "id": "6f9619ff-8b86-d011-b42d-00c04fc964ff",
+            "name": "web",
+            "hostId": "6f9619ff-8b86-d011-b42d-00c04fc964fe",
+            "kind": "local",
+            "bindScope": "loopback",
+            "bindPort": 8080,
+            "destHost": "localhost",
+            "destPort": 80,
+            "autoStart": false
+        }]);
+        let data: VaultData = serde_json::from_value(json).unwrap();
+        data.check_loaded().unwrap();
+        assert!(
+            serde_json::to_value(&data)
+                .unwrap()
+                .get("tunnels")
+                .is_none()
+        );
+        // Un autre champ inconnu reste refusé.
+        let mut json = serde_json::to_value(VaultData::default()).unwrap();
+        json["inconnu"] = serde_json::json!(1);
+        assert!(serde_json::from_value::<VaultData>(json).is_err());
     }
 
     fn identity_input(password: Option<&str>, key_id: Option<EntryId>) -> IdentityInput {

@@ -10,7 +10,9 @@ export function SftpSectionView() {
   const { t } = useTranslation();
   const tabs = useSessions(
     useShallow((s) =>
-      s.tabs.filter((tab) => tab.kind === 'terminal' && tab.status === 'connected'),
+      s.tabs.filter(
+        (tab) => tab.kind === 'terminal' && tab.local === null && tab.status === 'connected',
+      ),
     ),
   );
 

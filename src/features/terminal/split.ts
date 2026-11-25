@@ -7,13 +7,19 @@ import { terminalSession } from './TerminalSession';
 /**
  * Découpe un panneau (SSH-07). Le nouveau panneau reprend la cible du panneau d'origine : un
  * hôte du carnet s'y connecte directement (identité du coffre, aucun secret dans l'interface) ;
- * une connexion rapide pré-remplit le formulaire (le mot de passe est redemandé).
+ * une connexion rapide pré-remplit le formulaire (le mot de passe est redemandé) ; un terminal
+ * local ouvre le même profil.
  * Renvoie l'identifiant du nouveau panneau, ou `null` si la limite est atteinte.
  */
 export function splitAndConnect(paneId: string, direction: SplitDirection): string | null {
   const sessions = useSessions.getState();
   const source = sessions.tabs.find((t) => t.id === paneId);
   const id = sessions.splitPane(paneId, direction);
+  if (id && source?.local) {
+    // Terminal local : le nouveau panneau ouvre le même profil.
+    void terminalSession(id).openLocal(source.local);
+    return id;
+  }
   if (!id || !source?.target) return id;
   const target = source.target;
   if (target.hostId) {

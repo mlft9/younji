@@ -43,7 +43,9 @@ export function SnippetsView() {
   function send(snippet: SnippetEntry) {
     // Cible proposée : le dernier panneau utilisé, s'il est encore connecté.
     const { lastPaneId, tabs } = useSessions.getState();
-    const last = tabs.find((tab) => tab.id === lastPaneId && tab.status === 'connected');
+    const last = tabs.find(
+      (tab) => tab.id === lastPaneId && tab.local === null && tab.status === 'connected',
+    );
     useSnippetRun.getState().openRun(snippet.id, last ? [last.id] : []);
   }
 

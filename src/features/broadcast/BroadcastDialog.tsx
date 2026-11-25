@@ -19,7 +19,9 @@ function BroadcastDialogContent() {
   const { t } = useTranslation();
   const id = useId();
   const tabs = useSessions((s) => s.tabs);
-  const connected = tabs.filter((tab) => tab.kind === 'terminal' && tab.status === 'connected');
+  const connected = tabs.filter(
+    (tab) => tab.kind === 'terminal' && tab.local === null && tab.status === 'connected',
+  );
   const current = useBroadcast((s) => s.targets);
   const close = useBroadcast((s) => s.closeDialog);
   const start = useBroadcast((s) => s.start);

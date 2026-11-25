@@ -8,5 +8,6 @@ pub mod settings;
 pub mod sftp;
 pub mod snippets;
 pub mod ssh;
+pub mod term;
 pub mod url;
 pub mod vault;

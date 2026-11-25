@@ -6,6 +6,7 @@
   "nav": {
     "label": "Navigation principale",
     "hosts": "Hôtes",
+    "local": "Terminal local",
     "keys": "Clés",
     "snippets": "Snippets",
     "sftp": "SFTP",
@@ -320,6 +321,14 @@
       "invalid_values": "Chaque variable doit avoir une valeur sur une seule ligne, sans caractère de contrôle.",
       "no_target": "Cochez au moins une session connectée.",
       "send_failed": "Une session visée n'est plus connectée : le texte n'a pas été envoyé partout."
+    },
+    "term": {
+      "unknown_profile": "Ce shell n'est plus disponible. Rouvrez la liste des terminaux.",
+      "invalid_size": "Taille de terminal invalide.",
+      "input_too_large": "Saisie trop volumineuse.",
+      "spawn_failed": "Le shell n'a pas pu être lancé.",
+      "closed": "Le terminal est fermé.",
+      "exited": "Le shell s'est terminé."
     }
   },
   "vault": {
@@ -644,5 +653,23 @@
     "insert_other": "Insérer dans {{count}} sessions",
     "execute_one": "Exécuter",
     "execute_other": "Exécuter dans {{count}} sessions"
+  },
+  "local": {
+    "intro": "Shells installés sur ce poste, détectés par Younji. Ils s'ouvrent dans un onglet, dans votre dossier personnel.",
+    "refresh": "Actualiser",
+    "detecting": "Recherche des shells installés…",
+    "none": "Aucun shell détecté sur ce poste.",
+    "open": "Ouvrir",
+    "default": "par défaut",
+    "starting": "Lancement de {{name}}…",
+    "failedTitle": "Impossible d'ouvrir {{name}}",
+    "restart": "Relancer",
+    "kind": {
+      "powershell": "Windows PowerShell",
+      "pwsh": "PowerShell 7",
+      "cmd": "Invite de commandes",
+      "wsl": "Distribution WSL",
+      "shell": "Shell"
+    }
   }
 }

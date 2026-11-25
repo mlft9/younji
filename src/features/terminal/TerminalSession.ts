@@ -22,9 +22,14 @@ import {
   sshHostKeyDecision,
   sshResize,
   sshWrite,
+  termAck,
+  termClose,
+  termOpen,
+  termResize,
+  termWrite,
   toAppError,
 } from '@/lib/ipc';
-import type { AuthRequest, SessionEvent, SessionId } from '@/lib/types';
+import type { AuthRequest, LocalProfile, SessionEvent, SessionId } from '@/lib/types';
 import { useBroadcast } from '@/stores/broadcast';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useSnippetRun } from '@/stores/snippetRun';
@@ -69,6 +74,36 @@ export interface TerminalUiHandlers {
   confirmLink: (url: string) => void;
 }
 
+/**
+ * Transport d'une session ouverte : SSH (`ssh_*`) ou terminal local (`term_*`). Les deux
+ * familles de commandes restent séparées côté cœur : une commande SFTP ou de clé d'hôte ne peut
+ * jamais viser un terminal local.
+ */
+interface Transport {
+  write: (data: string, binary: boolean) => Promise<void>;
+  resize: (cols: number, rows: number) => Promise<void>;
+  ack: (bytes: number) => Promise<void>;
+  close: () => Promise<void>;
+}
+
+function sshTransport(id: SessionId): Transport {
+  return {
+    write: (data, binary) => sshWrite(id, data, binary),
+    resize: (cols, rows) => sshResize(id, cols, rows),
+    ack: (bytes) => sshAck(id, bytes),
+    close: () => sshClose(id),
+  };
+}
+
+function localTransport(id: SessionId): Transport {
+  return {
+    write: (data, binary) => termWrite(id, data, binary),
+    resize: (cols, rows) => termResize(id, cols, rows),
+    ack: (bytes) => termAck(id, bytes),
+    close: () => termClose(id),
+  };
+}
+
 export class TerminalSession {
   readonly terminal: Terminal;
   private readonly fit = new FitAddon();
@@ -81,6 +116,9 @@ export class TerminalSession {
   private ui: TerminalUiHandlers | null = null;
 
   private sessionId: SessionId | null = null;
+  private transport: Transport | null = null;
+  /** Génération dont la session s'est déjà terminée (fin reçue avant l'identifiant). */
+  private endedGeneration = 0;
   /** Incrémenté à chaque connexion : les messages d'une ancienne session sont ignorés. */
   private generation = 0;
   private everConnected = false;
@@ -232,9 +270,7 @@ export class TerminalSession {
     if (this.resizeTimer) clearTimeout(this.resizeTimer);
     this.resizeTimer = setTimeout(() => {
       this.resizeTimer = null;
-      if (this.sessionId !== null) {
-        void sshResize(this.sessionId, cols, rows).catch(() => undefined);
-      }
+      void this.transport?.resize(cols, rows).catch(() => undefined);
     }, RESIZE_DEBOUNCE_MS);
   }
 
@@ -319,11 +355,14 @@ export class TerminalSession {
     } else {
       auth = { kind: 'interactive' };
     }
-    await this.open(target, (size, listeners) =>
-      sshConnect(
-        { host: target.host, port: target.port, username: target.username, auth, ...size },
-        listeners,
-      ),
+    await this.open(
+      { target, local: null },
+      (size, listeners) =>
+        sshConnect(
+          { host: target.host, port: target.port, username: target.username, auth, ...size },
+          listeners,
+        ),
+      sshTransport,
     );
   }
 
@@ -332,17 +371,32 @@ export class TerminalSession {
    * secret ne passe par l'interface (reconnexion comprise).
    */
   async connectHost(target: ConnectTarget & { hostId: string }): Promise<void> {
-    await this.open(target, (size, listeners) =>
-      sshConnectHost({ hostId: target.hostId, ...size }, listeners),
+    await this.open(
+      { target, local: null },
+      (size, listeners) => sshConnectHost({ hostId: target.hostId, ...size }, listeners),
+      sshTransport,
+    );
+  }
+
+  /**
+   * Ouvre (ou relance) un terminal local avec un profil détecté par le cœur (étape 7). Le
+   * terminal est utilisable dès que le cœur renvoie son identifiant.
+   */
+  async openLocal(profile: LocalProfile): Promise<void> {
+    await this.open(
+      { target: null, local: profile },
+      (size, listeners) => termOpen({ profileId: profile.id, ...size }, listeners),
+      localTransport,
     );
   }
 
   private async open(
-    target: ConnectTarget,
+    origin: { target: ConnectTarget | null; local: LocalProfile | null },
     start: (
       size: { cols: number; rows: number },
       listeners: Parameters<typeof sshConnect>[1],
     ) => Promise<SessionId>,
+    transportOf: (id: SessionId) => Transport,
   ): Promise<void> {
     if (this.disposed) return;
     this.closeRemote();
@@ -350,7 +404,7 @@ export class TerminalSession {
     this.everConnected = false;
     this.pendingAck = 0;
     this.update({
-      target,
+      ...origin,
       status: 'connecting',
       errorCode: null,
       pendingHostKey: null,
@@ -365,7 +419,9 @@ export class TerminalSession {
     try {
       sessionId = await start(size, {
         onEvent: (event) => {
-          if (generation === this.generation) this.handleEvent(event);
+          if (generation !== this.generation) return;
+          if (event.type === 'disconnected') this.endedGeneration = generation;
+          this.handleEvent(event);
         },
         onOutput: (data) => {
           if (generation === this.generation) this.handleOutput(data);
@@ -377,20 +433,30 @@ export class TerminalSession {
       }
       return;
     }
+    const transport = transportOf(sessionId);
     if (generation !== this.generation || this.isDisposed()) {
       // Onglet fermé ou nouvelle tentative pendant l'ouverture : on abandonne celle-ci.
-      void sshClose(sessionId).catch(() => undefined);
+      void transport.close().catch(() => undefined);
       return;
     }
+    // Session déjà terminée (shell local sorti aussitôt) : rien à brancher.
+    if (this.endedGeneration === generation) return;
     this.sessionId = sessionId;
-    this.update({ sessionId });
+    this.transport = transport;
+    // L'identifiant d'un terminal local n'est pas publié : `tab.sessionId` désigne toujours une
+    // session SSH (SFTP), et les deux registres du cœur sont numérotés indépendamment.
+    this.update({ sessionId: origin.local ? null : sessionId });
     this.input = new InputQueue(
-      (data, binary) => sshWrite(sessionId, data, binary),
+      (data, binary) => transport.write(data, binary),
       () => undefined,
     );
     if (this.pendingAck > 0) {
-      void sshAck(sessionId, this.pendingAck).catch(() => undefined);
+      void transport.ack(this.pendingAck).catch(() => undefined);
       this.pendingAck = 0;
+    }
+    if (origin.local) {
+      // Pas d'authentification pour un terminal local : il est prêt.
+      this.handleEvent({ type: 'connected' });
     }
   }
 
@@ -473,6 +539,7 @@ export class TerminalSession {
     // Une session terminée quitte la diffusion pour de bon : une reconnexion ne la réintègre pas.
     useBroadcast.getState().removeTarget(this.tabId);
     this.sessionId = null;
+    this.transport = null;
     this.update({ sessionId: null });
     this.input?.close();
     this.input = null;
@@ -501,19 +568,22 @@ export class TerminalSession {
   }
 
   private acknowledge(bytes: number): void {
-    if (this.sessionId === null) {
+    if (this.transport === null) {
       this.pendingAck += bytes;
       return;
     }
-    void sshAck(this.sessionId, bytes).catch(() => undefined);
+    void this.transport.ack(bytes).catch(() => undefined);
   }
 
   private closeRemote(): void {
     useBroadcast.getState().removeTarget(this.tabId);
     this.input?.close();
     this.input = null;
+    if (this.transport !== null) {
+      void this.transport.close().catch(() => undefined);
+    }
+    this.transport = null;
     if (this.sessionId !== null) {
-      void sshClose(this.sessionId).catch(() => undefined);
       this.sessionId = null;
       this.update({ sessionId: null, remoteCwd: null });
     }

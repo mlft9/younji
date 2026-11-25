@@ -77,6 +77,22 @@ export type SessionEvent =
   | { type: 'connected' }
   | { type: 'disconnected'; code: string };
 
+// ------------------------------------------------------------------ terminal local (étape 7)
+
+/** Famille d'un shell local détecté par le cœur. */
+export type LocalProfileKind = 'powershell' | 'pwsh' | 'cmd' | 'wsl' | 'shell';
+
+/** Shell local détecté par le cœur (`term_profiles`), désigné par son identifiant. */
+export interface LocalProfile {
+  id: string;
+  name: string;
+  kind: LocalProfileKind;
+  isDefault: boolean;
+}
+
+/** Identifiant opaque d'un terminal local, attribué par le cœur. */
+export type TerminalId = number;
+
 // ------------------------------------------------------------------ coffre (étape 2)
 
 /** État du coffre (`vault_status`). */

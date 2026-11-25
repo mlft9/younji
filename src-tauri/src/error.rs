@@ -5,6 +5,7 @@
 //! journaux, sans secret (SECURITE.md §6).
 
 use core_ssh::SshError;
+use core_term::TermError;
 use core_vault::VaultError;
 use serde::Serialize;
 
@@ -97,6 +98,12 @@ impl From<SshError> for AppError {
     }
 }
 
+impl From<TermError> for AppError {
+    fn from(error: TermError) -> Self {
+        Self::new(error.code())
+    }
+}
+
 impl From<VaultError> for AppError {
     fn from(error: VaultError) -> Self {
         Self::new(error.code())
@@ -130,6 +137,8 @@ mod tests {
             .iter()
             .map(|e| e.code())
             .chain(VaultError::ALL.iter().map(|e| e.code()))
+            .chain(TermError::ALL.iter().map(|e| e.code()))
+            .chain(["term.exited"])
             .chain(AppError::OWN_CODES.iter().map(AppError::code))
             .collect();
         for locale in ["fr", "en"] {

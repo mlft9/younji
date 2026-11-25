@@ -55,6 +55,10 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
   - un nouveau panneau ouvert depuis un hôte du carnet se connecte seul ; depuis une connexion rapide, le mot de passe est redemandé.
 - Diffusion de la saisie : ce que vous tapez part en même temps vers plusieurs sessions choisies, dans n'importe quel onglet (Ctrl+Maj+I ou l'icône antenne). Bandeau rouge en haut de la fenêtre, bordure rouge sur chaque session concernée, arrêt en un clic ou par Ctrl+Maj+I (ADR-036).
 - Snippets : bibliothèque de commandes réutilisables enregistrée dans le coffre, avec recherche, création, modification et suppression. Les variables `{{nom}}` sont demandées au moment de l'envoi, avec un aperçu de la commande finale. Envoi vers la session active ou plusieurs sessions cochées, par Ctrl+Maj+S ou la barre d'outils du terminal, en « Insérer » (sans Entrée) ou « Exécuter » (ADR-037).
+- Terminal local : nouvelle section « Terminal local » de la barre latérale, qui liste les shells installés sur le poste et les ouvre dans un onglet, dans votre dossier personnel (ADR-039) :
+  - sous Windows : Windows PowerShell, PowerShell 7, Invite de commandes et chaque distribution WSL, détectées automatiquement ;
+  - sous Linux : les shells de `/etc/shells` (bash, zsh, fish…), votre shell par défaut en premier ;
+  - couleurs, redimensionnement, applications plein écran (vim, htop), recherche, copier/coller et écran partagé fonctionnent comme dans un terminal SSH ; quand le shell se termine, « Relancer » le rouvre.
 
 ### Retiré
 - Tunnels SSH (étape 6, TUN-01 à TUN-03) : fonction retirée du périmètre, jugée non nécessaire pour le début du projet (ADR-038). La section « Tunnels » de la barre latérale, qui n'affichait qu'un emplacement réservé, est supprimée.
@@ -68,8 +72,10 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Le temps passé à répondre aux questions du serveur n'est plus compté dans le délai réseau de la connexion ; chaque demande laisse 2 minutes pour répondre.
 - Fermer un onglet de terminal ferme aussi les onglets SFTP qui utilisent sa connexion ; verrouiller l'application arrête aussi les transferts et les éditions en cours.
 - Un coffre enregistré par cette version ne peut plus être ouvert par une version plus ancienne de Younji, qui le refuse sans rien perdre (ADR-037).
+- Verrouiller l'application, ou recharger l'interface, ferme aussi les terminaux locaux et arrête les programmes qui y tournent.
 
 ### Corrigé
+- Un coffre enregistré par une version de test de l'étape 6 (tunnels, retirée) était refusé à l'ouverture avec « Mot de passe incorrect ou coffre endommagé ». Le champ `tunnels` est désormais accepté puis oublié ; il disparaît à la prochaine sauvegarde du coffre. Tout autre champ inconnu reste refusé.
 - Les lettres accentuées tapées au clavier n'apparaissaient pas sur un serveur sans locale (bash en locale « C ») : Younji propose désormais `LANG=C.UTF-8` et `LC_CTYPE=C.UTF-8` à l'ouverture du shell, comme OpenSSH envoie `LANG LC_*` ; `LC_CTYPE` reste efficace quand le serveur réécrit `LANG=C` (conteneurs Proxmox).
 - Un panneau non connecté peut être fermé (bouton ✕ toujours visible sur un onglet découpé).
 - Le menu contextuel natif de la WebView (dont « Recharger », qui fermait toutes les sessions) est bloqué hors des champs de saisie.
@@ -113,3 +119,4 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - La diffusion de la saisie ne s'active qu'après avoir coché les sessions visées dans une liste qui montre le nom et l'adresse de chaque serveur (seule la session active est cochée d'office). Elle n'est jamais mémorisée, s'arrête au verrouillage, et une session déconnectée en sort définitivement, même après reconnexion.
 - Pendant la diffusion, un collage demande toujours confirmation, même sur une seule ligne, et rappelle les serveurs visés. Seules vos frappes sont diffusées : un serveur ne peut pas faire écrire son terminal dans les autres sessions.
 - Les snippets restent chiffrés dans le coffre. Leur contenu (hormis retours à la ligne et tabulations) et les valeurs des variables ne peuvent contenir ni caractère de contrôle ni caractère invisible (par exemple ceux qui inversent le sens du texte), pour qu'aucune commande cachée ne parte vers le serveur. Un snippet n'est exécuté que sur demande explicite, après aperçu, et seulement dans les sessions cochées.
+- Le terminal local ne peut lancer que les shells détectés par Younji : aucun champ ne permet de choisir un autre programme, et une variable `SHELL` modifiée ne fait pas lancer un programme absent de `/etc/shells`. Il n'est accessible qu'avec le coffre déverrouillé ; fermer un onglet ou verrouiller arrête le shell, même s'il ignore le signal de fin habituel. Rien de ce qui s'y tape ou s'y affiche n'est écrit dans les journaux. Un programme que vous laissez tourner en arrière-plan (`commande &`) peut survivre à la fermeture du shell, comme dans un terminal classique.

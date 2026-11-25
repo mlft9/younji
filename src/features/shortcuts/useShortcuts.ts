@@ -120,7 +120,7 @@ export function useShortcuts() {
           break;
         case 'sftpPanel':
           // Panneau SFTP à côté du terminal (SFTP-01).
-          if (tab?.kind === 'terminal') {
+          if (tab?.kind === 'terminal' && tab.local === null) {
             handled();
             sessions.update(tab.id, { sftpPanelOpen: !tab.sftpPanelOpen });
           }

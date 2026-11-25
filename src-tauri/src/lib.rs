@@ -9,6 +9,7 @@ mod navigation;
 mod settings;
 mod sftp_state;
 mod state;
+mod term_state;
 mod vault_state;
 
 use std::sync::Arc;
@@ -21,6 +22,7 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use crate::commands::vault::lock_everything;
 use crate::settings::SettingsStore;
 use crate::state::SessionManager;
+use crate::term_state::LocalTerminals;
 use crate::vault_state::{Activity, LockReason, VaultState};
 
 /// Nom de l'application côté Rust (ADR-014). Seule autre source : `productName` dans
@@ -76,6 +78,7 @@ pub fn run() {
             let known_hosts = Arc::new(KnownHosts::with_storage(vault.known_hosts_storage()));
             app.manage(SessionManager::new(known_hosts));
             app.manage(vault);
+            app.manage(LocalTerminals::default());
             app.manage(SettingsStore::new(data_dir.join(SETTINGS_FILE)));
             // Copies d'édition SFTP abandonnées (exécution interrompue il y a plus de 24 h) :
             // supprimées. Les plus récentes peuvent appartenir à une autre instance.
@@ -187,6 +190,12 @@ pub fn run() {
             commands::sftp::sftp_edit_force,
             commands::sftp::local_pick_root,
             commands::sftp::local_list,
+            commands::term::term_profiles,
+            commands::term::term_open,
+            commands::term::term_write,
+            commands::term::term_resize,
+            commands::term::term_ack,
+            commands::term::term_close,
         ])
         .run(tauri::generate_context!());
 

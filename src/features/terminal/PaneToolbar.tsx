@@ -57,43 +57,48 @@ export function PaneToolbar({ tab, split }: { tab: SessionTab; split: boolean })
           >
             <Rows2 aria-hidden="true" />
           </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            className={BUTTON}
-            aria-label={t('snippets.runInPane')}
-            title={t('snippets.runInPaneShortcut')}
-            onClick={() => {
-              useSnippetRun.getState().openPicker([tab.id]);
-            }}
-          >
-            <SquareTerminal aria-hidden="true" />
-          </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            className={BUTTON}
-            aria-label={t('broadcast.open')}
-            title={t('broadcast.openShortcut')}
-            onClick={() => {
-              useBroadcast.getState().openDialog();
-            }}
-          >
-            <Radio aria-hidden="true" />
-          </Button>
-          {!tab.sftpPanelOpen && (
-            <Button
-              size="icon"
-              variant="outline"
-              className={BUTTON}
-              aria-label={t('sftp.openPanel')}
-              title={t('sftp.openPanelShortcut')}
-              onClick={() => {
-                useSessions.getState().update(tab.id, { sftpPanelOpen: true });
-              }}
-            >
-              <FolderTree aria-hidden="true" />
-            </Button>
+          {/* Snippets, diffusion et SFTP visent des serveurs : absents d'un terminal local. */}
+          {!tab.local && (
+            <>
+              <Button
+                size="icon"
+                variant="outline"
+                className={BUTTON}
+                aria-label={t('snippets.runInPane')}
+                title={t('snippets.runInPaneShortcut')}
+                onClick={() => {
+                  useSnippetRun.getState().openPicker([tab.id]);
+                }}
+              >
+                <SquareTerminal aria-hidden="true" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                className={BUTTON}
+                aria-label={t('broadcast.open')}
+                title={t('broadcast.openShortcut')}
+                onClick={() => {
+                  useBroadcast.getState().openDialog();
+                }}
+              >
+                <Radio aria-hidden="true" />
+              </Button>
+              {!tab.sftpPanelOpen && (
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className={BUTTON}
+                  aria-label={t('sftp.openPanel')}
+                  title={t('sftp.openPanelShortcut')}
+                  onClick={() => {
+                    useSessions.getState().update(tab.id, { sftpPanelOpen: true });
+                  }}
+                >
+                  <FolderTree aria-hidden="true" />
+                </Button>
+              )}
+            </>
           )}
         </>
       )}
