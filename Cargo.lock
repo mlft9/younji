@@ -6224,6 +6224,7 @@ name = "younji"
 version = "0.1.0"
 dependencies = [
  "core-ssh",
+ "core-term",
  "core-vault",
  "open",
  "rand",

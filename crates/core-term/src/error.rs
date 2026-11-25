@@ -22,6 +22,15 @@ pub enum TermError {
 }
 
 impl TermError {
+    /// Toutes les variantes (test des traductions).
+    pub const ALL: [Self; 5] = [
+        Self::UnknownProfile,
+        Self::InvalidSize,
+        Self::InputTooLarge,
+        Self::SpawnFailed,
+        Self::Closed,
+    ];
+
     /// Code stable, clé i18n `errors.<code>`.
     pub fn code(self) -> &'static str {
         match self {

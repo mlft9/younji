@@ -58,6 +58,12 @@
     "allow-sftp-edit-close",
     "allow-sftp-edit-force",
     "allow-local-pick-root",
-    "allow-local-list"
+    "allow-local-list",
+    "allow-term-profiles",
+    "allow-term-open",
+    "allow-term-write",
+    "allow-term-resize",
+    "allow-term-ack",
+    "allow-term-close"
   ]
 }

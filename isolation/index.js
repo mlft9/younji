@@ -69,6 +69,12 @@
     'sftp_edit_force',
     'local_pick_root',
     'local_list',
+    'term_profiles',
+    'term_open',
+    'term_write',
+    'term_resize',
+    'term_ack',
+    'term_close',
   ]);
 
   /**

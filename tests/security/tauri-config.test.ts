@@ -243,6 +243,13 @@ describe('capabilities', () => {
       // Étape 5 : snippets du coffre (SNP-01).
       'allow-snippet-save',
       'allow-snippet-delete',
+      // Étape 7 : terminal local (profils détectés par le cœur, désignés par identifiant).
+      'allow-term-profiles',
+      'allow-term-open',
+      'allow-term-write',
+      'allow-term-resize',
+      'allow-term-ack',
+      'allow-term-close',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });

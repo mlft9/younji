@@ -320,6 +320,14 @@
       "invalid_values": "Chaque variable doit avoir une valeur sur une seule ligne, sans caractère de contrôle.",
       "no_target": "Cochez au moins une session connectée.",
       "send_failed": "Une session visée n'est plus connectée : le texte n'a pas été envoyé partout."
+    },
+    "term": {
+      "unknown_profile": "Ce shell n'est plus disponible. Rouvrez la liste des terminaux.",
+      "invalid_size": "Taille de terminal invalide.",
+      "input_too_large": "Saisie trop volumineuse.",
+      "spawn_failed": "Le shell n'a pas pu être lancé.",
+      "closed": "Le terminal est fermé.",
+      "exited": "Le shell s'est terminé."
     }
   },
   "vault": {
