@@ -79,6 +79,14 @@ pub fn run() {
             app.manage(SessionManager::new(known_hosts));
             app.manage(vault);
             app.manage(LocalTerminals::default());
+            app.manage(commands::rdp::RdpClients::default());
+            // Fichiers .rdp restés d'une exécution interrompue (aucun secret dedans).
+            if let Ok(dir) = commands::rdp::rdp_dir(app.handle()) {
+                let removed = core_rdp::cleanup_stale(&dir);
+                if removed > 0 {
+                    tracing::info!(removed, "fichiers .rdp restants supprimés");
+                }
+            }
             app.manage(SettingsStore::new(data_dir.join(SETTINGS_FILE)));
             // Copies d'édition SFTP abandonnées (exécution interrompue il y a plus de 24 h) :
             // supprimées. Les plus récentes peuvent appartenir à une autre instance.
@@ -196,6 +204,7 @@ pub fn run() {
             commands::term::term_resize,
             commands::term::term_ack,
             commands::term::term_close,
+            commands::rdp::rdp_launch,
         ])
         .run(tauri::generate_context!());
 

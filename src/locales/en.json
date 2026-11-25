@@ -297,7 +297,8 @@
     },
     "book": {
       "no_identity": "This host has no saved identity.",
-      "not_ssh": "This is an RDP host: it cannot be opened over SSH."
+      "not_ssh": "This is an RDP host: it cannot be opened over SSH.",
+      "not_rdp": "This is an SSH host: it cannot be opened over RDP."
     },
     "settings": {
       "invalid": "Invalid setting.",
@@ -331,6 +332,19 @@
       "spawn_failed": "The shell could not be started.",
       "closed": "The terminal is closed.",
       "exited": "The shell has exited."
+    },
+    "rdp": {
+      "invalid_address": "Invalid RDP address.",
+      "invalid_port": "Invalid RDP port.",
+      "invalid_username": "Invalid RDP user (empty or forbidden characters). Set a user on the host or its identity.",
+      "invalid_domain": "Invalid RDP domain.",
+      "invalid_resolution": "RDP resolution out of range.",
+      "invalid_password": "The identity's password cannot be passed to the RDP client (empty, too long or multi-line).",
+      "client_not_found": "No RDP client found. On Linux, install FreeRDP (freerdp3-x11 or freerdp2-x11 package).",
+      "password_required": "On Linux, the host's identity must include a password: FreeRDP cannot ask for it itself.",
+      "credential_failed": "Windows refused the temporary sign-in credential.",
+      "temp_file_failed": "The temporary connection file could not be created.",
+      "launch_failed": "The RDP client could not be started."
     }
   },
   "vault": {

@@ -4,6 +4,7 @@
 //! à une clé de traduction `errors.<code>` côté interface. Le détail technique part dans les
 //! journaux, sans secret (SECURITE.md §6).
 
+use core_rdp::RdpError;
 use core_ssh::SshError;
 use core_term::TermError;
 use core_vault::VaultError;
@@ -39,6 +40,8 @@ impl AppError {
     pub const HOST_WITHOUT_IDENTITY: Self = Self::new("book.no_identity");
     /// Hôte RDP utilisé pour une opération SSH.
     pub const HOST_NOT_SSH: Self = Self::new("book.not_ssh");
+    /// Hôte SSH utilisé pour une ouverture RDP.
+    pub const HOST_NOT_RDP: Self = Self::new("book.not_rdp");
     /// Paramètres hors des valeurs admises.
     pub const SETTINGS_INVALID: Self = Self::new("settings.invalid");
     /// `settings.json` ne peut pas être écrit.
@@ -72,6 +75,7 @@ impl AppError {
         Self::VAULT_LOCKED,
         Self::HOST_WITHOUT_IDENTITY,
         Self::HOST_NOT_SSH,
+        Self::HOST_NOT_RDP,
         Self::SETTINGS_INVALID,
         Self::SETTINGS_IO,
         Self::EXPORT_FAILED,
@@ -103,6 +107,12 @@ impl From<SshError> for AppError {
 
 impl From<TermError> for AppError {
     fn from(error: TermError) -> Self {
+        Self::new(error.code())
+    }
+}
+
+impl From<RdpError> for AppError {
+    fn from(error: RdpError) -> Self {
         Self::new(error.code())
     }
 }
@@ -141,6 +151,7 @@ mod tests {
             .map(|e| e.code())
             .chain(VaultError::ALL.iter().map(|e| e.code()))
             .chain(TermError::ALL.iter().map(|e| e.code()))
+            .chain(RdpError::ALL.iter().map(|e| e.code()))
             .chain(["term.exited"])
             .chain(AppError::OWN_CODES.iter().map(AppError::code))
             .collect();

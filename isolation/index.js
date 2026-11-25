@@ -75,6 +75,7 @@
     'term_resize',
     'term_ack',
     'term_close',
+    'rdp_launch',
   ]);
 
   /**

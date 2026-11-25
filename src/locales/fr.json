@@ -297,7 +297,8 @@
     },
     "book": {
       "no_identity": "Cet hôte n'a pas d'identité enregistrée.",
-      "not_ssh": "Cet hôte est un hôte RDP : il ne s'ouvre pas en SSH."
+      "not_ssh": "Cet hôte est un hôte RDP : il ne s'ouvre pas en SSH.",
+      "not_rdp": "Cet hôte est un hôte SSH : il ne s'ouvre pas en RDP."
     },
     "settings": {
       "invalid": "Paramètre invalide.",
@@ -331,6 +332,19 @@
       "spawn_failed": "Le shell n'a pas pu être lancé.",
       "closed": "Le terminal est fermé.",
       "exited": "Le shell s'est terminé."
+    },
+    "rdp": {
+      "invalid_address": "Adresse RDP invalide.",
+      "invalid_port": "Port RDP invalide.",
+      "invalid_username": "Utilisateur RDP invalide (vide ou caractères interdits). Renseignez un utilisateur sur l'hôte ou son identité.",
+      "invalid_domain": "Domaine RDP invalide.",
+      "invalid_resolution": "Résolution RDP hors limites.",
+      "invalid_password": "Le mot de passe de l'identité ne peut pas être transmis au client RDP (vide, trop long ou sur plusieurs lignes).",
+      "client_not_found": "Aucun client RDP trouvé. Sous Linux, installez FreeRDP (paquet freerdp3-x11 ou freerdp2-x11).",
+      "password_required": "Sous Linux, l'identité de l'hôte doit contenir un mot de passe : FreeRDP ne peut pas le demander lui-même.",
+      "credential_failed": "Windows a refusé l'identifiant temporaire de connexion.",
+      "temp_file_failed": "Le fichier de connexion temporaire n'a pas pu être créé.",
+      "launch_failed": "Le client RDP n'a pas pu être lancé."
     }
   },
   "vault": {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rdp-launch"
+description = "Enables the rdp_launch command without any pre-configured scope."
+commands.allow = ["rdp_launch"]
+
+[[permission]]
+identifier = "deny-rdp-launch"
+description = "Denies the rdp_launch command without any pre-configured scope."
+commands.deny = ["rdp_launch"]

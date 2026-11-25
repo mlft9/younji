@@ -6235,6 +6235,7 @@ dependencies = [
 name = "younji"
 version = "0.1.0"
 dependencies = [
+ "core-rdp",
  "core-ssh",
  "core-term",
  "core-vault",

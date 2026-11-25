@@ -4,6 +4,7 @@
 
 pub mod app;
 pub mod book;
+pub mod rdp;
 pub mod settings;
 pub mod sftp;
 pub mod snippets;

@@ -250,6 +250,8 @@ describe('capabilities', () => {
       'allow-term-resize',
       'allow-term-ack',
       'allow-term-close',
+      // Étape 8 : RDP v1 (hôte du carnet désigné par identifiant, client du système).
+      'allow-rdp-launch',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });

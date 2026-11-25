@@ -89,6 +89,7 @@ fn main() {
             "term_resize",
             "term_ack",
             "term_close",
+            "rdp_launch",
         ]));
 
     if let Err(error) = tauri_build::try_build(attributes) {
