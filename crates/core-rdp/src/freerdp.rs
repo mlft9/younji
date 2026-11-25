@@ -1,4 +1,4 @@
-//! Arguments et entrée standard de FreeRDP (`xfreerdp3` / `xfreerdp`).
+//! Arguments et entrée standard de FreeRDP (`xfreerdp3`, FreeRDP 3).
 //!
 //! Le mot de passe ne figure **jamais** dans les arguments : il est lu sur l'entrée standard
 //! (`/from-stdin:force`), que le cœur écrit puis ferme aussitôt.

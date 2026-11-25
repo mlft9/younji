@@ -15,7 +15,7 @@ En CI, un conteneur OpenSSH (`tests/docker/sshd/`, depuis l'étape 1) remplace l
 |---|---|---|---|
 | `younji-deb` | Debian 12 ou 13, sans interface graphique | Serveur SSH/SFTP principal | 1 |
 | `younji-win` | Windows Server (évaluation 180 j) ou Windows 11 Entreprise (évaluation 90 j) | Cible RDP, serveur OpenSSH Windows, test d'installation sur un Windows vierge | 0 (installeur), 8 (RDP) |
-| `younji-desktop` | Ubuntu Desktop 24.04 | **Tester la version Linux de Younji** (.deb, AppImage) et xfreerdp | 0 |
+| `younji-desktop` | Ubuntu Desktop 24.04 | **Tester la version Linux de Younji** (.deb, AppImage) et `xfreerdp3` | 0 |
 
 > Ton PC est sous Windows : sans `younji-desktop`, la version Linux de l'application ne serait jamais testée en conditions réelles.
 > Pour l'étape 11, prévois une **YubiKey** (ou une autre clé FIDO2), branchée sur ton PC, côté client.
@@ -103,11 +103,25 @@ Attendu au téléchargement du dossier `malveillants` : seul `normal.txt` est co
 
 ## 4. Préparer `younji-win`
 - Activer le Bureau à distance avec NLA. Créer un compte local `testrdp`.
+- **Pour l'étape 8 (RDP)**, dans un PowerShell administrateur, puis snapshot `rdp-pret` :
+  ```powershell
+  # Bureau à distance activé, NLA exigé, pare-feu ouvert
+  Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0
+  Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name UserAuthentication -Value 1
+  Enable-NetFirewallRule -Name RemoteDesktop-UserMode-In-TCP
+  # Compte de test, membre de « Utilisateurs du Bureau à distance » (SID indépendant de la langue)
+  net user testrdp "<mot de passe du lab>" /add
+  Add-LocalGroupMember -SID S-1-5-32-555 -Member testrdp
+  hostname   # nom NetBIOS, à utiliser comme domaine dans les tests
+  ```
+  Mot de passe propre au lab, jamais réutilisé ailleurs ; le plan de test de l'étape propose d'y glisser un marqueur unique pour le chercher ensuite (`grep`) dans les processus et les fichiers.
+- **Changer le certificat RDP** (test du refus d'un certificat modifié) : `Get-ChildItem 'Cert:\LocalMachine\Remote Desktop' | Remove-Item; Restart-Service TermService -Force`. Restaurer ensuite le snapshot `rdp-pret`.
 - (Optionnel) Installer le serveur OpenSSH (Paramètres → Fonctionnalités facultatives) pour tester SSH vers Windows et PowerShell à distance.
 - Snapshot `base-propre` **avant** d'y installer Younji, pour tester l'installeur sur un Windows vierge (SmartScreen, WebView2).
 
 ## 5. Préparer `younji-desktop`
-- Ubuntu Desktop 24.04 avec `freerdp3-x11` (ou `freerdp2-x11`) installé.
+- Ubuntu Desktop 24.04 avec **FreeRDP 3** : `sudo apt install -y freerdp3-x11`, puis `xfreerdp3 --version` (3.x attendu). Younji ne cherche que la commande `xfreerdp3` : FreeRDP 2 (`freerdp2-x11`, commande `xfreerdp`) n'est pas pris en charge (ADR-040).
+- Avant une recette RDP, `rm -rf ~/.config/freerdp` efface les certificats mémorisés par FreeRDP (premier certificat accepté, `/cert:tofu,deny`).
 - Sert à installer le `.deb` ou l'`AppImage` produits par `build.yml` et à refaire le plan de test de l'étape sous Linux.
 
 ## 6. Tests d'intégration en local

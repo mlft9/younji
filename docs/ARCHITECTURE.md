@@ -1,6 +1,6 @@
 # Architecture
 
-> Reflète le code à la fin de l'étape 7 (terminal local). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
+> Reflète le code à la fin de l'étape 8 (RDP v1, client du système). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
 
 ## 1. Vue d'ensemble
 
@@ -18,17 +18,17 @@ flowchart LR
     ISO["Iframe d'isolation<br/>isolation/index.js<br/>(liste blanche)"]
     subgraph Core["Cœur Rust (fiable)"]
         ACL[Capabilities / ACL]
-        CMD["src-tauri : commandes IPC<br/>SessionManager (+ SftpRegistry), LocalTerminals,<br/>VaultState, SettingsStore"]
+        CMD["src-tauri : commandes IPC<br/>SessionManager (+ SftpRegistry), LocalTerminals,<br/>RdpClients, VaultState, SettingsStore"]
         ACL --> CMD
         subgraph Crates["crates/"]
             SSH[core-ssh]
             VAULT[core-vault]
             TERM[core-term]
             IMP["core-import (étape 9)"]
-            RDP["core-rdp (étape 8)"]
+            RDP[core-rdp]
         end
-        CMD --> SSH & VAULT & TERM
-        CMD -.-> IMP & RDP
+        CMD --> SSH & VAULT & TERM & RDP
+        CMD -.-> IMP
         SSH -- "clés d'hôte<br/>(trait KnownHostsStorage)" --> CMD
     end
     IPCJS -- "invoke()" --> ISO
@@ -39,7 +39,8 @@ flowchart LR
     CMD -- "settings.json (en clair, sans secret)" --> DISK
     SSH -- "fichiers transférés<br/>(dossiers choisis par le cœur)" --> DISK
     TERM -- "PTY (ConPTY, openpty)" --> SHELL[(Shells locaux)]
-    RDP -. RDP .-> WIN[(Postes Windows)]
+    RDP -- "mstsc (Windows), xfreerdp3 (Linux)<br/>mot de passe hors ligne de commande" --> RDPC[(Client RDP du système)]
+    RDPC -- RDP --> WIN[(Postes Windows)]
 ```
 Traits pleins : en place. Pointillés : à venir.
 
@@ -52,7 +53,7 @@ Traits pleins : en place. Pointillés : à venir.
 
 ## 2. Découpage du code
 
-État actuel (étape 7) :
+État actuel (étape 8) :
 
 ```
 .
@@ -69,8 +70,9 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── vault/                Porte du coffre (VaultGate), création avec indicateur de robustesse,
 │   │   │                         déverrouillage, verrouillage (lock.ts), lien avec le minuteur du cœur
 │   │   │                         (useVaultSession), estimation zxcvbn-ts chargée à la demande (strength.ts)
-│   │   ├── hosts/                Carnet d'hôtes : liste par groupe, recherche (filter.ts), formulaire,
-│   │   │                         ouverture d'une session depuis le carnet (openHost.ts)
+│   │   ├── hosts/                Carnet d'hôtes : liste par groupe, recherche (filter.ts), formulaire
+│   │   │                         (HostForm, protocole SSH ou RDP), ouverture d'une session depuis le
+│   │   │                         carnet (openHost.ts) ou d'un hôte RDP (HostsView → rdp_launch)
 │   │   ├── keys/                 Clés générées (KeyGenerateDialog) ou importées, export de la clé
 │   │   │                         publique, déploiement sur un hôte (KeyDeployDialog), identités,
 │   │   │                         clés d'hôte connues (HKY-04)
@@ -124,7 +126,8 @@ Traits pleins : en place. Pointillés : à venir.
 │   ├── src/
 │   │   ├── main.rs               Point d'entrée
 │   │   ├── lib.rs                Builder Tauri, fenêtre, plugin dialog (Rust seul), minuteur de
-│   │   │                         verrouillage, verrouillage au rechargement, enregistrement des commandes
+│   │   │                         verrouillage, verrouillage au rechargement, enregistrement des commandes,
+│   │   │                         nettoyage RDP au démarrage et à la fermeture (RunEvent::Exit)
 │   │   ├── state.rs              SessionManager : sessions ouvertes (64 max), fichiers de clé par identifiant,
 │   │   │                         registre SFTP fermé avec les sessions
 │   │   ├── term_state.rs         LocalTerminals : profils de la dernière détection, terminaux locaux (32 max)
@@ -147,8 +150,11 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │                         Channel d'événements SFTP
 │   │   ├── commands/term.rs      Commandes term_* (terminal local) : profil désigné par identifiant, deux
 │   │   │                         Channel par terminal (mêmes formats que SSH)
+│   │   ├── commands/rdp.rs       rdp_launch (hôte RDP désigné par identifiant, cible et mot de passe lus
+│   │   │                         dans le coffre) ; RdpClients : clients lancés (16 max), arrêtés au
+│   │   │                         verrouillage et à la fermeture
 │   │   ├── commands/url.rs       open_external_url : revalidation http(s), ouverture via la crate open
-│   │   ├── error.rs              AppError { code } sérialisable, conversion depuis SshError, TermError et VaultError
+│   │   ├── error.rs              AppError { code } sérialisable, conversion depuis SshError, TermError, RdpError et VaultError
 │   │   ├── logging.rs            Journaux rotatifs (tracing)
 │   │   └── navigation.rs         Garde de navigation de la fenêtre
 │   ├── build.rs                  Déclaration des commandes applicatives (AppManifest)
@@ -187,6 +193,19 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │   └── error.rs          SshError et ses codes stables ssh.*
 │   │   └── tests/                local_server.rs (serveur russh en mémoire), openssh.rs (#[ignore]),
 │   │                             fixtures/test_host_*.pub (clés publiques uniquement)
+│   ├── core-rdp/                 RDP v1 (RDP-02) : client du système, sans dépendance à Tauri
+│   │   └── src/
+│   │       ├── target.rs         RdpTarget : adresse, port, utilisateur, domaine, résolution validés
+│   │       │                     (aucun caractère de contrôle ni invisible, aucun « - » ou « / » initial)
+│   │       ├── rdpfile.rs        Fichier .rdp pour mstsc : clés fixes, sans mot de passe, redirections
+│   │       │                     limitées au presse-papiers
+│   │       ├── freerdp.rs        Arguments de xfreerdp3 (un par option) et contenu de l'entrée standard
+│   │       ├── launch.rs         Recherche du client (mstsc.exe, xfreerdp3 dans les dossiers absolus du
+│   │       │                     PATH), lancement, supervision (fin du client ou 60 s), nettoyage,
+│   │       │                     ActiveCredentials (un lancement par serveur), restes supprimés au démarrage
+│   │       ├── wincred.rs        Windows seulement : CredWriteW / CredReadW / CredEnumerateW / CredDeleteW,
+│   │       │                     seul module unsafe du projet (ADR-040)
+│   │       └── error.rs          RdpError et ses codes stables rdp.*
 │   ├── core-term/                Terminal local (LOC-01, LOC-02), sans dépendance à Tauri
 │   │   └── src/
 │   │       ├── profiles.rs       Détection des shells (Windows : PowerShell, pwsh, CMD, distributions WSL ;
@@ -200,7 +219,8 @@ Traits pleins : en place. Pointillés : à venir.
 │           ├── crypto.rs         Argon2id → KEK, enveloppe de la DEK, XChaCha20-Poly1305, aléa du système
 │           ├── store.rs          Vault : création, déverrouillage, sauvegarde atomique + .bak,
 │           │                     changement de mot de passe, permissions
-│           ├── model.rs          Hôtes, groupes, identités, clés, clés d'hôte, réglages, snippets ;
+│           ├── model.rs          Hôtes (protocole HostProtocol : SSH, ou RDP avec domaine et
+│           │                     RdpResolution), groupes, identités, clés, clés d'hôte, réglages, snippets ;
 │           │                     validation (revérifiée au chargement) et intégrité référentielle
 │           ├── policy.rs         Politique du mot de passe maître (12 caractères, zxcvbn ≥ 3)
 │           └── error.rs          VaultError et ses codes stables vault.*
@@ -210,12 +230,13 @@ Traits pleins : en place. Pointillés : à venir.
 ├── scripts/
 │   ├── vitest.mjs                Lanceur Vitest (normalise la lettre de lecteur sous Windows)
 │   └── integration.mjs           Lanceur des tests d'intégration (charge .env.test s'il existe)
-├── Cargo.toml                    Workspace (src-tauri, crates/core-ssh, crates/core-term, crates/core-vault), profils
+├── Cargo.toml                    Workspace (src-tauri, crates/core-rdp, crates/core-ssh, crates/core-term,
+│                                 crates/core-vault), profils
 ├── deny.toml                     Règles cargo-deny (avis, licences, sources)
 └── rust-toolchain.toml           Toolchain stable + rustfmt + clippy
 ```
 
-À venir : `core-rdp` (étape 8) et `core-import` (étape 9) rejoignent le workspace à leur étape. Les tunnels SSH (ancienne étape 6) sont retirés du périmètre (ADR-038).
+À venir : `core-import` (étape 9) rejoint le workspace à son étape. Les tunnels SSH (ancienne étape 6) sont retirés du périmètre (ADR-038).
 
 ### Dépendances principales ajoutées à l'étape 1
 | Dépendance | Rôle | Note |
@@ -262,15 +283,23 @@ Aucune dépendance npm : le glisser-déposer utilise l'API HTML5.
 
 Aucune dépendance npm.
 
+### Dépendance ajoutée à l'étape 8
+| Dépendance | Rôle | Note |
+|---|---|---|
+| `windows-sys` 0.61 (`Win32_Foundation`, `Win32_Security_Credentials`), dans `core-rdp`, **Windows seulement** | Appels au gestionnaire d'identifiants (`CredWriteW`, `CredReadW`, `CredEnumerateW`, `CredDeleteW`, `CredFree`) | MIT OR Apache-2.0 ; déjà dans l'arbre via Tauri (ADR-040) |
+| `tempfile`, `secrecy`, `zeroize` (déjà utilisées) | Fichier `.rdp` au nom aléatoire, mot de passe en mémoire | |
+
+Aucune dépendance npm.
+
 **Dépendances entre crates** : `core-ssh` et `core-vault` ne dépendent pas l'une de l'autre (ADR-004). C'est `src-tauri` qui fait le lien :
 - il lit une identité dans le coffre (mot de passe, clé privée) et la passe à `core-ssh` sous forme de `Credentials` ;
 - il stocke dans le coffre une clé générée par `core-ssh` (`generate_key`), comme une clé importée ;
 - pour un déploiement, il re-dérive la ligne de clé publique de la clé privée du coffre (`AuthorizedKeyLine::from_private`) ;
 - il implémente le trait `KnownHostsStorage` de `core-ssh` pour le coffre (`VaultKnownHosts`, ADR-027).
 
-`core-term` suit la même règle : elle ne dépend ni de `core-ssh` ni de `core-vault`, et c'est `src-tauri` qui vérifie l'état du coffre avant d'ouvrir un terminal local. Les futures crates `core-import` et `core-rdp` feront de même.
+`core-term` et `core-rdp` suivent la même règle : elles ne dépendent ni de `core-ssh` ni de `core-vault`, et c'est `src-tauri` qui vérifie l'état du coffre avant d'ouvrir un terminal local, ou lit l'hôte RDP et son identité dans le coffre pour construire une `RdpTarget` et passer le mot de passe à `core-rdp`. La future crate `core-import` fera de même.
 
-**Règles de compilation communes (workspace)** : edition 2024, `unsafe_code = "forbid"`, et `unwrap`, `expect`, `panic`, `dbg!`, `todo!` interdits par clippy hors tests. En profil `dev`, `argon2`, `blake2`, `rsa`, `crypto-bigint` et `crypto-primes` sont compilés en `opt-level = 3` : sans cela, une dérivation Argon2id (64 Mio, 3 passes) ou la génération d'une clé RSA 4096 rendraient les tests et `npm run tauri dev` très lents. Sans effet sur la compilation de production.
+**Règles de compilation communes (workspace)** : edition 2024, `unsafe_code = "forbid"`, et `unwrap`, `expect`, `panic`, `dbg!`, `todo!` interdits par clippy hors tests. Seule exception : `core-rdp` reprend ces règles avec `unsafe_code = "deny"`, pour que le module `wincred` (Windows) puisse l'autoriser localement, et ajoute `undocumented_unsafe_blocks = "deny"` (commentaire `SAFETY:` obligatoire, ADR-040). En profil `dev`, `argon2`, `blake2`, `rsa`, `crypto-bigint` et `crypto-primes` sont compilés en `opt-level = 3` : sans cela, une dérivation Argon2id (64 Mio, 3 passes) ou la génération d'une clé RSA 4096 rendraient les tests et `npm run tauri dev` très lents. Sans effet sur la compilation de production.
 
 ## 3. Communication interface ↔ cœur
 
@@ -317,7 +346,7 @@ Carnet, clés et paramètres :
 
 | Commande | Entrée | Sortie | Permission |
 |---|---|---|---|
-| `host_save` | `request { id \| null, name, address, port, username, identityId, groupId, tags[], notes }` | `EntryId` | `allow-host-save` |
+| `host_save` | `request { id \| null, name, address, port, username, identityId, groupId, tags[], notes, protocol }` ; `protocol` = `{ kind: "ssh" }` (défaut si absent) ou `{ kind: "rdp", domain, resolution }`, `resolution` = `{ mode: "fullscreen" }` ou `{ mode: "fixed", width, height }` | `EntryId` | `allow-host-save` |
 | `host_delete` | `id` | aucune | `allow-host-delete` |
 | `group_save` | `request { id \| null, name }` | `EntryId` | `allow-group-save` |
 | `group_delete` | `id` (ses hôtes passent « sans groupe ») | aucune | `allow-group-delete` |
@@ -369,6 +398,12 @@ Terminal local (étape 7, ADR-039). Les commandes `term_*` sont séparées des `
 | `term_ack` | `terminalId`, `bytes` | aucune | `allow-term-ack` |
 | `term_close` | `terminalId` | aucune ; le processus est tué | `allow-term-close` |
 
+RDP (étape 8, ADR-040). Aucun secret n'entre ni ne sort : l'hôte est désigné par son identifiant.
+
+| Commande | Entrée | Sortie | Permission |
+|---|---|---|---|
+| `rdp_launch` | `hostId` (hôte RDP du carnet ; adresse, utilisateur, domaine et mot de passe de l'identité lus dans le coffre) | `{ existingCredential }` : vrai si mstsc utilise un identifiant `TERMSRV/<hôte>` déjà enregistré par l'utilisateur ; `book.not_rdp` pour un hôte SSH, `vault.locked`, `rdp.*`, `ssh.too_many_sessions` (16 clients) | `allow-rdp-launch` |
+
 Aucune commande n'accepte de politique de conflit : tout transfert démarre en « demander ». Les structures de requête refusent les champs inconnus, si bien qu'un chemin absolu ne peut pas être glissé dans `target` ou `source`.
 
 **Secrets en entrée** : seuls `ssh_connect` (`auth`), `ssh_auth_answer` (`answers`), `vault_create`, `vault_unlock`, `vault_change_password`, `identity_save` (`password`), `key_import` (`passphrase`) et `key_deploy` (`password`) en transportent, une seule fois. Côté Rust, ils sont placés dans un `SecretString` dès la désérialisation. **Aucune commande n'en renvoie** :
@@ -376,9 +411,9 @@ Aucune commande n'accepte de politique de conflit : tout transfert démarre en �
 - le `password` d'une identité vaut `{ action: "keep" }`, `{ action: "clear" }` ou `{ action: "set", value }` ;
 - une identité renvoyée par `vault_snapshot` est `{ id, name, username, hasPassword, keyId }` : la présence d'un mot de passe, jamais sa valeur ;
 - un snippet est renvoyé comme `{ id, name, content, description, variables[] }` : ce n'est pas un secret (ADR-037), et ses variables sont calculées par le cœur ;
-- une clé, importée ou générée, est renvoyée avec sa seule partie publique (sans commentaire) et son empreinte ; un hôte avec ses champs descriptifs. Aucune commande n'exporte une clé privée (ADR-032).
+- une clé, importée ou générée, est renvoyée avec sa seule partie publique (sans commentaire) et son empreinte ; un hôte avec ses champs descriptifs et son protocole. Aucune commande n'exporte une clé privée (ADR-032).
 
-**Validation** : les structures Rust refusent les champs inconnus (`deny_unknown_fields`) ; un `EntryId` doit être un UUID ; adresse, port et utilisateur d'un hôte passent par les mêmes règles que la connexion SSH ; noms, étiquettes, notes et nombres d'entrées sont bornés dans `core-vault` (`model.rs`). Toute commande du carnet sur un coffre verrouillé renvoie `vault.locked`.
+**Validation** : les structures Rust refusent les champs inconnus (`deny_unknown_fields`) ; un `EntryId` doit être un UUID ; adresse, port et utilisateur d'un hôte passent par les mêmes règles que la connexion SSH ; domaine et résolution RDP sont bornés (`vault.invalid_rdp`), puis revalidés par `core-rdp` au lancement ; un hôte RDP est refusé par `ssh_connect_host` et `key_deploy` (`book.not_ssh`) ; noms, étiquettes, notes et nombres d'entrées sont bornés dans `core-vault` (`model.rs`). Toute commande du carnet sur un coffre verrouillé renvoie `vault.locked`.
 
 ### Événements
 
@@ -434,10 +469,10 @@ stateDiagram-v2
     unlocked --> locked: vault_lock, inactivité ou rechargement
 ```
 
-- **Toute l'application est derrière le déverrouillage** (ADR-028) : `VaultGate` n'affiche le carnet, les terminaux et la connexion rapide qu'à l'état `unlocked`. `ssh_connect` et `ssh_connect_host` refusent de se connecter sur un coffre verrouillé (`vault.locked`), puisque les clés d'hôte connues sont dans le coffre (ADR-027). `term_profiles` et `term_open` le refusent aussi (ADR-039) ; un terminal local enregistré pendant un verrouillage est refermé aussitôt.
+- **Toute l'application est derrière le déverrouillage** (ADR-028) : `VaultGate` n'affiche le carnet, les terminaux et la connexion rapide qu'à l'état `unlocked`. `ssh_connect` et `ssh_connect_host` refusent de se connecter sur un coffre verrouillé (`vault.locked`), puisque les clés d'hôte connues sont dans le coffre (ADR-027). `term_profiles` et `term_open` le refusent aussi (ADR-039), comme `rdp_launch` (ADR-040) ; un terminal local ou un client RDP enregistré pendant un verrouillage est refermé aussitôt.
 - **Création** : refusée si un coffre existe déjà (`vault.already_exists`) ou si seule la copie `.bak` existe (`vault.backup_only`) ; dans ce cas `vault_status` renvoie `missing` et l'utilisateur restaure la copie en la renommant. Un ancien fichier `known_hosts` en clair (étape 1) est repris dans le coffre, puis supprimé.
 - **Déverrouillage** : tentatives sérialisées dans `VaultState` ; après 3 échecs consécutifs, chaque tentative attend 1 s, 2 s, 4 s… jusqu'à 30 s. La vérification du mot de passe actuel dans `vault_change_password` partage ce compteur.
-- **Verrouillage** (`lock_everything`, ADR-026) : le coffre est verrouillé d'abord (DEK et secrets effacés de la mémoire), puis toutes les sessions sont fermées, avec leurs clients SFTP, transferts et éditions, ainsi que tous les terminaux locaux (processus tués) ; les dossiers locaux choisis sont oubliés. Une session enregistrée pendant ce temps revérifie l'état du coffre et se referme aussitôt. Déclencheurs : `vault_lock` (bouton de la barre latérale, Ctrl+Maj+L), minuteur d'inactivité, rechargement de la page (`PageLoadEvent::Started`).
+- **Verrouillage** (`lock_everything`, ADR-026) : le coffre est verrouillé d'abord (DEK et secrets effacés de la mémoire), puis toutes les sessions sont fermées, avec leurs clients SFTP, transferts et éditions, ainsi que tous les terminaux locaux (processus tués) et les clients RDP lancés par Younji (identifiants et fichiers temporaires supprimés) ; les dossiers locaux choisis sont oubliés. Une session enregistrée pendant ce temps revérifie l'état du coffre et se referme aussitôt. Déclencheurs : `vault_lock` (bouton de la barre latérale, Ctrl+Maj+L), minuteur d'inactivité, rechargement de la page (`PageLoadEvent::Started`).
 - **Minuteur d'inactivité** (`lib.rs`, `vault_state.rs`) : tâche tokio qui vérifie toutes les 5 s. L'interface signale l'activité au clavier, à la souris ou à la molette par `vault_touch`, au plus toutes les 15 s. Le délai (dans le coffre, 15 min par défaut) est comparé à deux horloges, monotone et murale : la mise en veille compte, et une horloge murale qui recule n'empêche pas le verrouillage.
 - **Changement de mot de passe** : nouveau sel, nouvelle DEK, rechiffrement complet ; le `.bak` est ensuite recopié depuis le nouveau fichier, ou supprimé si la copie échoue (`SECURITE.md` §3.6).
 
@@ -610,6 +645,36 @@ Un envoi suit le même chemin dans l'autre sens : sources choisies dans la boît
 
 Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture du client 45 s ; 30 s par requête ; paquets de 256 Kio au plus ; listage de 10 000 entrées affichées, 20 000 requêtes READDIR et 120 s au plus ; résolution des cibles de liens d'un listage limitée à 256 liens et 10 s ; profondeur 64 et 100 000 éléments par opération récursive ; 1 000 éléments sélectionnés par transfert ; 64 transferts en attente par client.
 
+### Ouverture d'un hôte RDP (RDP-02, ADR-040)
+
+```mermaid
+sequenceDiagram
+    participant UI as HostsView
+    participant CMD as rdp_launch (src-tauri)
+    participant V as Coffre
+    participant R as core-rdp
+    participant OS as Système
+    UI->>CMD: rdpLaunch(hostId)
+    CMD->>V: hôte RDP + identité (coffre déverrouillé)
+    V-->>CMD: RdpTarget validée, mot de passe (SecretString)
+    CMD->>R: find_client() puis launch() (hors de l'exécuteur async)
+    alt Windows
+        R->>OS: .rdp sans mot de passe (données locales/rdp, nom aléatoire)
+        R->>OS: CredWriteW TERMSRV/&lt;hôte&gt;, CRED_TYPE_DOMAIN_PASSWORD,<br/>CRED_PERSIST_SESSION, marqueur « Younji (temporaire) »
+        R->>OS: mstsc.exe fichier.rdp
+    else Linux
+        R->>OS: xfreerdp3 /v: /u: [/d:] /f ou /size: /cert:tofu,deny +clipboard /from-stdin:force
+        R->>OS: mot de passe sur l'entrée standard, tube fermé
+    end
+    R-->>CMD: RdpProcess (fil de supervision)
+    CMD-->>UI: { existingCredential }
+    Note over R,OS: fin du client, 60 s, verrouillage ou fermeture de Younji :<br/>identifiant et fichier .rdp supprimés
+```
+
+- **Identifiant existant** : un `TERMSRV/<hôte>` sans marqueur appartient à l'utilisateur ; il n'est ni écrasé ni supprimé, et `existingCredential` le signale. Avec le marqueur, il appartient à un lancement en cours (cette instance ou une autre) : refus `rdp.busy`. Le registre `ActiveCredentials` refuse de même un second lancement de cette instance vers le même serveur.
+- **Supervision** : un fil par client vérifie toutes les 250 ms ; il nettoie à la fin du client ou 60 s après le lancement, puis attend la fin du processus. `RdpClients` (16 clients au plus) les arrête tous au verrouillage (`lock_everything`) et à `RunEvent::Exit`. Au démarrage, `lib.rs` supprime les fichiers `younji-*.rdp` restés dans `<données locales>/rdp` et, sous Windows, les identifiants `TERMSRV/*` portant le marqueur (arrêt brutal).
+- **Sans mot de passe dans l'identité** : sous Windows, aucun identifiant n'est écrit et mstsc le demande ; sous Linux, refus `rdp.password_required`.
+
 ## 4. Fenêtre, stockage et journaux
 
 ### Fenêtre principale
@@ -623,9 +688,10 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 
 | Fichier | Contenu | Protection | Disponible |
 |---|---|---|---|
-| `vault.younji` | Hôtes, groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037) | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
+| `vault.younji` | Hôtes (protocole SSH ou RDP depuis l'étape 8, champ `protocol` absent = SSH), groupes, identités, clés, clés d'hôte connues (format OpenSSH), délai de verrouillage, snippets (étape 5, champ `snippets` ajouté sans changer `SCHEMA_VERSION`, ADR-037) | Chiffré et authentifié, format v1 (`SECURITE.md` §3.3). Écriture atomique, 0600 (dossier 0700) sous Linux. Charge utile limitée à 64 Mio, vérifiée avant toute allocation. | Oui (étape 2) |
 | `vault.younji.bak` | Version précédente du coffre | Chiffré. Copié de façon atomique avant chaque remplacement ; recopié depuis le nouveau fichier après un changement de mot de passe, ou supprimé si la copie échoue | Oui (étape 2) |
 | `edits/` (dans `app_local_data_dir`) | Copies temporaires des fichiers distants ouverts en édition (`younji-edit-*`) | Dossier 0700, fichier 0600 sous Linux. Supprimées à la fin de l'édition, de la session et au verrouillage ; copies abandonnées depuis plus de 24 h supprimées au démarrage | Oui (étape 4) |
+| `rdp/` (dans `app_local_data_dir`) | Fichiers `.rdp` temporaires de mstsc (`younji-*.rdp`) : adresse, utilisateur, domaine, résolution, **aucun mot de passe** | Dossier 0700 sous Unix, nom aléatoire. Supprimés à la fin de mstsc, au plus tard 60 s après le lancement, au verrouillage et à la fermeture ; restes supprimés au démarrage | Oui (étape 8) |
 | `settings.json` | Langue, thème, taille de police du terminal | En clair, **aucune donnée sensible** (il doit être lisible avant le déverrouillage). Écriture atomique ; lecture limitée à 64 Kio ; chaque valeur relue est validée, une valeur inattendue reprend sa valeur par défaut | Oui (étape 2) |
 
 **Clés d'hôte connues** : ce n'est plus un fichier. Elles sont dans le coffre (ADR-027), ce qui tranche le point ouvert d'ADR-006 et d'ADR-023. Un fichier `known_hosts` en clair laissé par l'étape 1 est repris à la création du coffre, puis supprimé. Une clé d'hôte se supprime dans Clés > Clés d'hôte connues (HKY-04).
@@ -637,9 +703,10 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 ### Journaux
 - Dossier `app_log_dir` de Tauri (`%LOCALAPPDATA%\<identifier>\logs\` sous Windows, `~/.local/share/<identifier>/logs/` sous Linux), créé en 0700 sous Linux.
 - Fichiers `younji.<date>.log`, rotation quotidienne, 7 fichiers au plus. En développement, les journaux sont aussi affichés sur la console. Si le dossier est inutilisable, repli sur la console (jamais sur un dossier temporaire partagé).
-- `YOUNJI_LOG` (`error` à `trace`, `info` par défaut) ne règle que le niveau du **code de Younji** : cibles `younji`, `younji_lib`, `core_ssh`, `core_term` et `core_vault` (`OWN_TARGETS` dans `logging.rs` ; chaque nouvelle crate `core_*` s'y ajoute). Les dépendances, dont `russh`, restent plafonnées à `warn`, pour qu'un niveau élevé ne fasse jamais journaliser des paquets réseau ou des arguments IPC.
+- `YOUNJI_LOG` (`error` à `trace`, `info` par défaut) ne règle que le niveau du **code de Younji** : cibles `younji`, `younji_lib`, `core_rdp`, `core_ssh`, `core_term` et `core_vault` (`OWN_TARGETS` dans `logging.rs` ; chaque nouvelle crate `core_*` s'y ajoute). Les dépendances, dont `russh`, restent plafonnées à `warn`, pour qu'un niveau élevé ne fasse jamais journaliser des paquets réseau ou des arguments IPC.
 - `core_ssh` journalise la cible (`utilisateur@hôte:port`) et la cause de fin de session au niveau `debug`, un changement de clé d'hôte au niveau `warn`. Le coffre journalise les verrouillages (avec leur cause), le nombre d'échecs de déverrouillage et les erreurs d'écriture, jamais un contenu.
 - Le terminal local ne journalise que le type de profil (`kind`), l'ouverture, la fermeture et les échecs de lancement, jamais un contenu, une commande ni le chemin du programme.
+- Le RDP ne journalise que des événements (client lancé, terminé, nettoyage impossible, échec d'écriture de l'identifiant ou du lancement), jamais l'hôte, l'utilisateur ni le mot de passe.
 - Le SFTP ne journalise ni nom de fichier, ni chemin, ni contenu : seulement des compteurs (bilan d'un transfert), des identifiants opaques et des codes d'erreur.
 - Aucun secret, aucun contenu de terminal, de coffre ni de fichier transféré (`SECURITE.md` §6).
 
@@ -647,16 +714,17 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 1. Les crates renvoient des erreurs `thiserror` précises. `SshError` (`core-ssh`) et `VaultError` (`core-vault`) ne transportent aucune donnée : ni secret, ni entrée utilisateur, ni texte du serveur.
 2. `src-tauri` les convertit en `AppError { code }`. Seul le code est sérialisé. Un test Rust vérifie que chaque code a sa traduction FR et EN.
    - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`. Ajoutés à l'étape 3 : `auth_prompt_invalid`, `auth_prompt_timeout`, `auth_cancelled`, `no_pending_prompt`, `invalid_answers`, `key_generation_failed`, `invalid_public_key`, `deploy_failed`. Ajoutés à l'étape 4 : `sftp_unavailable`, `sftp_failed`, `sftp_not_found`, `sftp_permission_denied`, `sftp_already_exists`, `sftp_not_directory`, `sftp_invalid_path`, `sftp_not_file`, `sftp_invalid_mode`, `sftp_unsafe_name`, `sftp_too_many_entries`, `local_io`, `local_outside_root`, `local_root_forbidden`, `transfer_cancelled`, `transfer_not_found`, `edit_too_large`, `edit_conflict`. Le texte d'état renvoyé par le serveur SFTP n'est jamais recopié : il est traduit en code.
-   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet`.
+   - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large` ; depuis l'étape 5 : `invalid_snippet` ; depuis l'étape 8 : `invalid_rdp`.
    - `term.*` (`TermError`, étape 7) : `unknown_profile`, `invalid_size`, `input_too_large`, `spawn_failed`, `closed` ; plus `term.exited`, envoyé par `src-tauri` dans l'événement `disconnected` à la fin du processus. Un terminal local inconnu ou en surnombre reprend les codes `ssh.session_not_found` et `ssh.too_many_sessions`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
-   - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal` ; depuis l'étape 4 : `sftp.not_found`, `sftp.too_many`, `sftp.edit_not_found`, `sftp.too_many_edits`, `local.root_unknown`, `editor.open_failed`.
+   - `rdp.*` (`RdpError`, étape 8) : `invalid_address`, `invalid_port`, `invalid_username`, `invalid_domain`, `invalid_resolution`, `invalid_password`, `client_not_found`, `password_required`, `credential_failed`, `temp_file_failed`, `busy`, `launch_failed`.
+   - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal` ; depuis l'étape 4 : `sftp.not_found`, `sftp.too_many`, `sftp.edit_not_found`, `sftp.too_many_edits`, `local.root_unknown`, `editor.open_failed` ; depuis l'étape 8 : `book.not_ssh`, `book.not_rdp`.
 3. `src/lib/ipc.ts` normalise toute erreur reçue en `{ code }` ; un message brut n'est jamais propagé, et une erreur de forme inattendue devient `unknown`.
 4. L'interface affiche `t('errors.<code>')`. Le détail technique part dans les journaux, **sans secret**.
 
 ## 6. Interface
 - **Porte du coffre** (`features/vault/`) : au premier lancement, création du coffre (mot de passe et confirmation, indicateur de robustesse en direct, avertissement « aucune récupération possible ») ; ensuite, écran de déverrouillage, avec la cause du dernier verrouillage. Rien d'autre n'est affiché tant que le coffre est verrouillé.
 - Mise en page type Termius : barre latérale (Hôtes, Terminal local, Clés, Snippets, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie.
-- **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`).
+- **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`). Depuis l'étape 8 (RDP-01, RDP-02), le formulaire propose le protocole SSH ou RDP : en RDP, le port par défaut passe à 3389 et apparaissent le domaine et la résolution (plein écran, ou largeur × hauteur). Un hôte RDP porte une icône d'écran et un badge « RDP » ; le double-clic ou « Ouvrir en RDP » appelle `rdp_launch` et affiche un message d'état (client lancé, identifiant Windows de l'utilisateur utilisé, ou erreur traduite). Le dialogue de déploiement de clé ne propose que les hôtes SSH.
 - **Clés** (`features/keys/`, KEY-01 à KEY-03, HST-03, HKY-04) : clés générées dans le coffre (`KeyGenerateDialog`, Ed25519 par défaut) ou importées (boîte de dialogue du système) ; renommage, copie et export `.pub` de la clé publique, déploiement sur un hôte du carnet (`KeyDeployDialog`, qui reprend les dialogues de clé d'hôte et de questions du serveur), suppression ; identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
 - **Onglets de session** (`stores/sessions.ts`, `TabBar`) : deux sortes d'onglets, `kind: 'terminal'` et `kind: 'sftp'` (voir SFTP ci-dessous). Ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` (↔ `authPrompt`) → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. En `authPrompt`, l'onglet affiche `AuthPromptDialog` : hôte qui pose les questions, texte du serveur encadré comme « Message envoyé par le serveur », rappel que Younji ne demande jamais le mot de passe maître ici ; réponses masquées sauf si le serveur autorise l'écho, champs vidés dès l'envoi. Le store garde la demande en attente, jamais les réponses. La connexion rapide propose un troisième mode, « Questions du serveur (2FA) », sans aucun secret saisi d'avance. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.
 - **Terminal** (`features/terminal/`) : un contrôleur `TerminalSession` par panneau, hors de React, qui garde l'instance xterm.js, son tampon (10 000 lignes) et sa session quand l'onglet est masqué. Taille de police réglable, appliquée à chaud. Addons fit (avec `ResizeObserver` et anti-rebond de 100 ms vers `ssh_resize`), search, web-links, unicode11 et WebGL (repli sur le rendu DOM si WebGL est indisponible). Au verrouillage, tous les contrôleurs sont détruits.
@@ -693,6 +761,9 @@ Bornes et délais (`client.rs`, `ops.rs`, `transfer.rs`, `queue.rs`) : ouverture
 
 ### Tests du terminal local
 `cargo test -p core-term` : détection Linux à partir d'un `/etc/shells` factice (un profil par nom, `$SHELL` retenu seulement s'il est listé et absolu, programmes absents ignorés, liste de repli), décodage UTF-16 de la sortie de `wsl.exe -l -q` (BOM, doublons, `docker-desktop` écarté), validation des noms de distribution, nom passé en argument séparé ; session réelle `/bin/sh` (commande exécutée et fin signalée, taille transmise, fermeture qui tue le programme une seule fois, y compris un programme qui ignore SIGHUP, saisie trop grande refusée, lecture suspendue sans acquittement, programme absent). Côté `src-tauri` : profil et terminal inconnus refusés, traduction de chaque code `term.*`. Côté interface (Vitest) : liste des profils, ouverture par le seul identifiant, saisie, acquittement et fermeture par `term_*` et jamais `ssh_*`, relance, session terminée avant le retour de l'identifiant, découpe, absence de SFTP, de snippet et de diffusion.
+
+### Tests du RDP
+`cargo test -p core-rdp` : cible (cibles usuelles acceptées ; retours à la ligne, caractères invisibles, options déguisées `/p:`, `-x` refusés), fichier `.rdp` (clés fixes, aucun mot de passe), arguments FreeRDP (un par option, jamais de mot de passe, `/cert:tofu,deny`), entrée standard (ligne de domaine seulement si nécessaire, mots de passe inutilisables refusés) ; sous Unix, lancement d'un faux `xfreerdp3` (script) qui vérifie que le mot de passe arrive sur l'entrée standard et jamais dans ses arguments, mot de passe obligatoire, fichier `.rdp` privé et supprimé, recherche limitée aux dossiers absolus du `PATH`, double réservation d'un serveur refusée, nettoyage des restes. Le module `wincred` n'est compilé et exercé que sous Windows (recette manuelle). `core-vault` : protocole SSH par défaut pour un coffre existant, domaine et résolution validés. `src-tauri` : cible et mot de passe lus dans le coffre, hôte SSH refusé par `rdp_launch`, hôte RDP refusé pour une session ou un déploiement SSH, traduction de chaque code `rdp.*`. Interface (Vitest) : formulaire RDP (champs, port, envoi), ouverture d'un hôte RDP par son seul identifiant.
 
 ### `ci.yml` (Linux, à chaque push et PR)
 Permissions en lecture seule, actions épinglées par SHA, `persist-credentials: false`. Cinq jobs :
