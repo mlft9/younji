@@ -19,6 +19,9 @@ use crate::VaultError;
 
 /// Magie du fichier de coffre.
 pub const MAGIC: [u8; 4] = *b"YNJV";
+/// Magie d'une sauvegarde chiffrée (export, VLT-06, SECURITE.md §3.7) : un coffre ne peut pas
+/// être lu comme une sauvegarde, ni l'inverse.
+pub const BACKUP_MAGIC: [u8; 4] = *b"YNJB";
 /// Version du format de fichier.
 pub const FORMAT_VERSION: u16 = 1;
 /// Identifiant de la fonction de dérivation : Argon2id.
@@ -94,9 +97,14 @@ pub struct Header {
 impl Header {
     /// Sérialise l'en-tête (35 octets), qui sert aussi d'AAD.
     pub fn encode(&self) -> [u8; HEADER_LEN] {
+        self.encode_with(MAGIC)
+    }
+
+    /// Sérialise l'en-tête avec une magie donnée ([`MAGIC`] ou [`BACKUP_MAGIC`]).
+    pub fn encode_with(&self, magic: [u8; 4]) -> [u8; HEADER_LEN] {
         let mut out = [0u8; HEADER_LEN];
         let mut w = Writer::new(&mut out);
-        w.put(&MAGIC);
+        w.put(&magic);
         w.put(&FORMAT_VERSION.to_le_bytes());
         w.put(&[KDF_ARGON2ID]);
         w.put(&self.params.m_kib.to_le_bytes());
@@ -108,8 +116,13 @@ impl Header {
 
     /// Lit et valide l'en-tête : magie, version, fonction de dérivation, bornes des paramètres.
     pub fn decode(bytes: &[u8; HEADER_LEN]) -> Result<Self, VaultError> {
+        Self::decode_with(bytes, MAGIC)
+    }
+
+    /// Comme [`Header::decode`], avec une magie attendue donnée.
+    pub fn decode_with(bytes: &[u8; HEADER_LEN], magic: [u8; 4]) -> Result<Self, VaultError> {
         let mut r = Reader::new(bytes);
-        if r.take::<4>() != MAGIC {
+        if r.take::<4>() != magic {
             return Err(VaultError::InvalidFile);
         }
         if u16::from_le_bytes(r.take()) != FORMAT_VERSION {
@@ -173,6 +186,15 @@ impl EncryptedVault {
 
     /// Lit un coffre depuis un flux dont la taille totale est `size`.
     pub fn read_from(reader: &mut impl Read, size: u64) -> Result<Self, VaultError> {
+        Self::read_from_with(reader, size, MAGIC)
+    }
+
+    /// Comme [`EncryptedVault::read_from`], avec une magie attendue donnée.
+    pub fn read_from_with(
+        reader: &mut impl Read,
+        size: u64,
+        magic: [u8; 4],
+    ) -> Result<Self, VaultError> {
         if size < FIXED_LEN as u64 || size > FIXED_LEN as u64 + MAX_PAYLOAD_LEN {
             return Err(VaultError::InvalidFile);
         }
@@ -180,7 +202,7 @@ impl EncryptedVault {
         reader.read_exact(&mut fixed).map_err(|e| io_error(&e))?;
         let mut r = Reader::new(&fixed);
         let header_bytes: [u8; HEADER_LEN] = r.take();
-        let header = Header::decode(&header_bytes)?;
+        let header = Header::decode_with(&header_bytes, magic)?;
         let dek_nonce = r.take();
         let wrapped_dek = r.take();
         let data_nonce = r.take();

@@ -627,6 +627,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-import"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "core-rdp"
 version = "0.1.0"
 dependencies = [
@@ -6235,6 +6243,7 @@ dependencies = [
 name = "younji"
 version = "0.1.0"
 dependencies = [
+ "core-import",
  "core-rdp",
  "core-ssh",
  "core-term",

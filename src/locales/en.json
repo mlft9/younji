@@ -293,7 +293,8 @@
       "password_mismatch": "The two passwords do not match.",
       "current_password_required": "Enter the current password.",
       "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart.",
-      "invalid_rdp": "Invalid RDP settings: domain (letters, digits, “.”, “-”, “_”) or resolution out of range."
+      "invalid_rdp": "Invalid RDP settings: domain (letters, digits, “.”, “-”, “_”) or resolution out of range.",
+      "backup_passphrase_reused": "The backup passphrase must be different from the master password."
     },
     "book": {
       "no_identity": "This host has no saved identity.",
@@ -346,6 +347,14 @@
       "temp_file_failed": "The temporary connection file could not be created.",
       "launch_failed": "The RDP client could not be started.",
       "busy": "An RDP launch to this server is already in progress. Try again in a minute."
+    },
+    "import": {
+      "stale": "This preview is no longer valid (already applied, or data changed meanwhile). Start the import again.",
+      "read_failed": "The file could not be read (missing, permissions or encoding).",
+      "too_large": "The file is too large."
+    },
+    "backup": {
+      "passphrase_required": "Enter the backup passphrase."
     }
   },
   "vault": {
@@ -702,5 +711,85 @@
       "wsl": "WSL distribution",
       "shell": "Shell"
     }
+  },
+  "import": {
+    "fromConfig": "Import ~/.ssh/config",
+    "fromOtherFile": "Other file…",
+    "knownHosts": {
+      "title": "Import host keys",
+      "summary": "{{added}} key(s) to add, {{duplicates}} already known, {{skipped}} refused.",
+      "warning": "An imported key will be trusted without asking when connecting: only import your own known_hosts file. A different key for an already known host is always refused.",
+      "added": "Keys to add",
+      "skippedTitle_one": "{{count}} line refused",
+      "skippedTitle_other": "{{count}} lines refused",
+      "line": "line {{line}}",
+      "submit_one": "Add {{count}} key",
+      "submit_other": "Add {{count}} keys",
+      "skip": {
+        "invalid": "invalid line or key",
+        "cert_authority": "@cert-authority not supported",
+        "pattern": "wildcard pattern not supported",
+        "conflict": "host already known with another key: refused",
+        "too_large": "maximum size reached",
+        "hashed": "hashed names: not supported by Younji (line would have no effect)"
+      },
+      "fromDefault": "Import ~/.ssh/known_hosts"
+    },
+    "doneConfig_one": "{{count}} host imported into the “Import OpenSSH” group.",
+    "doneConfig_other": "{{count}} hosts imported into the “Import OpenSSH” group.",
+    "doneKnownHosts": "Host keys imported.",
+    "config": {
+      "title": "Import OpenSSH configuration",
+      "intro": "Tick the hosts to add to the address book. They are created without an identity: connecting will ask for the password or key. No private key is read.",
+      "noHost": "No importable host in this file.",
+      "hosts": "Hosts found",
+      "alreadyInVault": "Already in the address book (unticked).",
+      "skipped_one": "{{count}} entry skipped",
+      "skipped_other": "{{count}} entries skipped",
+      "submit_one": "Import {{count}} host",
+      "submit_other": "Import {{count}} hosts"
+    },
+    "warning": {
+      "proxy_ignored": "ProxyJump/ProxyCommand ignored: Younji will connect directly.",
+      "forwarding_ignored": "Port forwardings ignored.",
+      "identity_file": "Key to import separately (Keys > Import): {{files}}",
+      "default_user": "No user: the local user name is used."
+    },
+    "skip": {
+      "wildcard": "wildcard pattern: its values apply to matching hosts",
+      "match_block": "Match block not supported",
+      "include_not_found": "file not found",
+      "unreadable": "unreadable file",
+      "file_too_large": "file too large",
+      "limit_reached": "limit reached (Include too deep, looping or too many files)",
+      "unsupported_token": "unsupported % token",
+      "invalid_port": "invalid port",
+      "invalid_value": "invalid address or user",
+      "duplicate": "duplicate of a previous host",
+      "already_in_vault": "already in the address book"
+    }
+  },
+  "backup": {
+    "title": "Encrypted backup",
+    "intro": "Export the vault to an encrypted file, to be stored away from this computer. It contains your passwords and keys: protect it with a passphrase different from the master password.",
+    "export": "Export a backup",
+    "passphrase": "Backup passphrase",
+    "confirm": "Confirm the passphrase",
+    "distinctHint": "At least 12 characters, hard to guess, and different from the master password. Without it, the backup is lost.",
+    "exportSubmit": "Export…",
+    "exported": "Backup exported.",
+    "import": "Import a backup",
+    "mode": "Mode",
+    "modes": {
+      "merge": "Merge",
+      "mergeHint": "Adds what is missing; nothing that exists is changed.",
+      "replace": "Replace",
+      "replaceHint": "Replaces the whole vault content. The master password does not change."
+    },
+    "importSubmit": "Choose the file and import…",
+    "imported": "Imported: {{hosts}} host(s), {{groups}} group(s), {{identities}} identity(ies), {{keys}} key(s), {{snippets}} snippet(s), {{knownHosts}} host key(s); {{skipped}} entry(ies) already present or refused.",
+    "replaceTitle": "Replace the whole vault?",
+    "replaceMessage": "All current vault content (hosts, identities, keys, snippets) will be replaced by the backup's, including the trusted host keys: only use this mode with your own backup. The previous version stays in the .bak file until the next change.",
+    "replaceConfirm": "Replace"
   }
 }

@@ -22,6 +22,7 @@ pub fn lock_everything(app: &AppHandle, reason: LockReason) {
     app.state::<crate::term_state::LocalTerminals>().close_all();
     app.state::<crate::commands::rdp::RdpClients>()
         .terminate_all();
+    app.state::<crate::commands::import::ImportState>().clear();
 }
 
 /// État du coffre : absent, verrouillé ou déverrouillé.

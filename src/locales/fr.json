@@ -293,7 +293,8 @@
       "password_mismatch": "Les deux mots de passe ne sont pas identiques.",
       "current_password_required": "Saisissez le mot de passe actuel.",
       "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez.",
-      "invalid_rdp": "Réglages RDP invalides : domaine (lettres, chiffres, « . », « - », « _ ») ou résolution hors limites."
+      "invalid_rdp": "Réglages RDP invalides : domaine (lettres, chiffres, « . », « - », « _ ») ou résolution hors limites.",
+      "backup_passphrase_reused": "La phrase de passe de la sauvegarde doit être différente du mot de passe maître."
     },
     "book": {
       "no_identity": "Cet hôte n'a pas d'identité enregistrée.",
@@ -346,6 +347,14 @@
       "temp_file_failed": "Le fichier de connexion temporaire n'a pas pu être créé.",
       "launch_failed": "Le client RDP n'a pas pu être lancé.",
       "busy": "Une ouverture RDP vers ce serveur est déjà en cours. Réessayez dans une minute."
+    },
+    "import": {
+      "stale": "Cet aperçu n'est plus valable (déjà appliqué, ou données modifiées entre-temps). Relancez l'import.",
+      "read_failed": "Le fichier n'a pas pu être lu (introuvable, droits ou encodage).",
+      "too_large": "Le fichier est trop volumineux."
+    },
+    "backup": {
+      "passphrase_required": "Saisissez la phrase de passe de la sauvegarde."
     }
   },
   "vault": {
@@ -702,5 +711,85 @@
       "wsl": "Distribution WSL",
       "shell": "Shell"
     }
+  },
+  "import": {
+    "fromConfig": "Importer ~/.ssh/config",
+    "fromOtherFile": "Autre fichier…",
+    "knownHosts": {
+      "title": "Importer des clés d'hôte",
+      "summary": "{{added}} clé(s) à ajouter, {{duplicates}} déjà connue(s), {{skipped}} refusée(s).",
+      "warning": "Une clé importée sera acceptée sans question lors des connexions : n'importez que votre propre fichier known_hosts. Une autre clé pour un hôte déjà connu est toujours refusée.",
+      "added": "Clés à ajouter",
+      "skippedTitle_one": "{{count}} ligne refusée",
+      "skippedTitle_other": "{{count}} lignes refusées",
+      "line": "ligne {{line}}",
+      "submit_one": "Ajouter {{count}} clé",
+      "submit_other": "Ajouter {{count}} clés",
+      "skip": {
+        "invalid": "ligne ou clé invalide",
+        "cert_authority": "@cert-authority non pris en charge",
+        "pattern": "motif à joker non pris en charge",
+        "conflict": "hôte déjà connu avec une autre clé : refusé",
+        "too_large": "taille maximale atteinte",
+        "hashed": "noms hachés : non pris en charge par Younji (ligne sans effet)"
+      },
+      "fromDefault": "Importer ~/.ssh/known_hosts"
+    },
+    "doneConfig_one": "{{count}} hôte importé dans le groupe « Import OpenSSH ».",
+    "doneConfig_other": "{{count}} hôtes importés dans le groupe « Import OpenSSH ».",
+    "doneKnownHosts": "Clés d'hôte importées.",
+    "config": {
+      "title": "Importer la configuration OpenSSH",
+      "intro": "Cochez les hôtes à ajouter au carnet. Ils sont créés sans identité : la connexion demandera le mot de passe ou la clé. Aucune clé privée n'est lue.",
+      "noHost": "Aucun hôte importable dans ce fichier.",
+      "hosts": "Hôtes trouvés",
+      "alreadyInVault": "Déjà dans le carnet (décoché).",
+      "skipped_one": "{{count}} entrée ignorée",
+      "skipped_other": "{{count}} entrées ignorées",
+      "submit_one": "Importer {{count}} hôte",
+      "submit_other": "Importer {{count}} hôtes"
+    },
+    "warning": {
+      "proxy_ignored": "ProxyJump/ProxyCommand ignoré : Younji se connectera directement.",
+      "forwarding_ignored": "Redirections de ports ignorées.",
+      "identity_file": "Clé à importer à part (Clés > Importer) : {{files}}",
+      "default_user": "Utilisateur absent : celui du poste est utilisé."
+    },
+    "skip": {
+      "wildcard": "motif à joker : ses valeurs s'appliquent aux hôtes correspondants",
+      "match_block": "bloc Match non pris en charge",
+      "include_not_found": "fichier introuvable",
+      "unreadable": "fichier illisible",
+      "file_too_large": "fichier trop volumineux",
+      "limit_reached": "limite atteinte (Include trop profond, en boucle ou trop de fichiers)",
+      "unsupported_token": "jeton % non pris en charge",
+      "invalid_port": "port invalide",
+      "invalid_value": "adresse ou utilisateur invalide",
+      "duplicate": "doublon d'un hôte précédent",
+      "already_in_vault": "déjà dans le carnet"
+    }
+  },
+  "backup": {
+    "title": "Sauvegarde chiffrée",
+    "intro": "Exportez le coffre dans un fichier chiffré, à ranger hors de ce poste. Il contient vos mots de passe et clés : protégez-le par une phrase de passe différente du mot de passe maître.",
+    "export": "Exporter une sauvegarde",
+    "passphrase": "Phrase de passe de la sauvegarde",
+    "confirm": "Confirmer la phrase de passe",
+    "distinctHint": "Au moins 12 caractères, difficile à deviner, et différente du mot de passe maître. Sans elle, la sauvegarde est perdue.",
+    "exportSubmit": "Exporter…",
+    "exported": "Sauvegarde exportée.",
+    "import": "Importer une sauvegarde",
+    "mode": "Mode",
+    "modes": {
+      "merge": "Fusionner",
+      "mergeHint": "Ajoute ce qui manque ; rien de ce qui existe n'est modifié.",
+      "replace": "Remplacer",
+      "replaceHint": "Remplace tout le contenu du coffre. Le mot de passe maître ne change pas."
+    },
+    "importSubmit": "Choisir le fichier et importer…",
+    "imported": "Importé : {{hosts}} hôte(s), {{groups}} groupe(s), {{identities}} identité(s), {{keys}} clé(s), {{snippets}} snippet(s), {{knownHosts}} clé(s) d'hôte ; {{skipped}} entrée(s) déjà présente(s) ou refusée(s).",
+    "replaceTitle": "Remplacer tout le coffre ?",
+    "replaceMessage": "Tout le contenu actuel du coffre (hôtes, identités, clés, snippets) sera remplacé par celui de la sauvegarde, y compris les clés d'hôte de confiance : n'utilisez ce mode qu'avec votre propre sauvegarde. La version précédente reste dans le fichier .bak jusqu'à la prochaine modification.",
+    "replaceConfirm": "Remplacer"
   }
 }

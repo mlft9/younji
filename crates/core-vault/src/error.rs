@@ -68,6 +68,9 @@ pub enum VaultError {
     /// Mot de passe d'identité vide ou trop long.
     #[error("secret invalide")]
     InvalidSecret,
+    /// La phrase de passe de la sauvegarde ouvre aussi le coffre : elle doit être distincte.
+    #[error("phrase de passe de sauvegarde identique au mot de passe maître")]
+    BackupPassphraseReused,
     /// Réglages RDP invalides (domaine, résolution).
     #[error("réglages RDP invalides")]
     InvalidRdpSettings,
@@ -121,6 +124,7 @@ impl VaultError {
             Self::InvalidNotes => "vault.invalid_notes",
             Self::InvalidSecret => "vault.invalid_secret",
             Self::InvalidRdpSettings => "vault.invalid_rdp",
+            Self::BackupPassphraseReused => "vault.backup_passphrase_reused",
             Self::IdentityIncomplete => "vault.identity_incomplete",
             Self::InvalidAutoLock => "vault.invalid_auto_lock",
             Self::TooManyEntries => "vault.too_many_entries",
@@ -154,6 +158,7 @@ impl VaultError {
         Self::InvalidNotes,
         Self::InvalidSecret,
         Self::InvalidRdpSettings,
+        Self::BackupPassphraseReused,
         Self::IdentityIncomplete,
         Self::InvalidAutoLock,
         Self::TooManyEntries,

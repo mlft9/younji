@@ -1,0 +1,5 @@
+Host pve.lab
+    Port 8022
+
+Host nas.lab
+    HostName 192.0.2.20

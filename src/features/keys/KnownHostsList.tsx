@@ -1,12 +1,13 @@
-import { RotateCw, ShieldOff, Trash2 } from 'lucide-react';
+import { FileInput, RotateCw, ShieldOff, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/features/connect/ErrorMessage';
-import { knownHostDelete, knownHostList, toAppError } from '@/lib/ipc';
-import type { KnownHostEntry } from '@/lib/types';
+import { KnownHostsImportDialog } from '@/features/import/KnownHostsImportDialog';
+import { importKnownHostsPreview, knownHostDelete, knownHostList, toAppError } from '@/lib/ipc';
+import type { ImportSource, KnownHostEntry, KnownHostsImportPreview } from '@/lib/types';
 
 /**
  * Clés d'hôte connues (HKY-04). Supprimer une clé est le seul moyen de débloquer un hôte dont
@@ -17,6 +18,20 @@ export function KnownHostsList() {
   const [entries, setEntries] = useState<KnownHostEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<KnownHostEntry | null>(null);
+  /** Aperçu de l'import de known_hosts (IMP-02), gardé par le cœur. */
+  const [importPreview, setImportPreview] = useState<KnownHostsImportPreview | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function previewImport(source: ImportSource) {
+    setNotice(null);
+    try {
+      const preview = await importKnownHostsPreview(source);
+      if (preview) setImportPreview(preview);
+      setError(null);
+    } catch (failure) {
+      setError(toAppError(failure).code);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -68,7 +83,21 @@ export function KnownHostsList() {
         </Button>
       </div>
       <p className="text-sm text-muted-foreground">{t('knownHosts.intro')}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={() => void previewImport('default')}>
+          <FileInput aria-hidden="true" />
+          {t('import.knownHosts.fromDefault')}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => void previewImport('pick')}>
+          {t('import.fromOtherFile')}
+        </Button>
+      </div>
       {error && <ErrorMessage code={error} />}
+      {notice && (
+        <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+          {notice}
+        </p>
+      )}
       {entries?.length === 0 && (
         <p className="text-sm text-muted-foreground">{t('knownHosts.empty')}</p>
       )}
@@ -123,6 +152,19 @@ export function KnownHostsList() {
             const entry = toDelete;
             setToDelete(null);
             void remove(entry);
+          }}
+        />
+      )}
+      {importPreview && (
+        <KnownHostsImportDialog
+          preview={importPreview}
+          onClose={() => {
+            setImportPreview(null);
+          }}
+          onImported={() => {
+            setImportPreview(null);
+            setNotice(t('import.doneKnownHosts'));
+            void load();
           }}
         />
       )}

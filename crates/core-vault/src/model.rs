@@ -351,6 +351,23 @@ impl Default for VaultData {
     }
 }
 
+/// Bilan d'une fusion de sauvegarde.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MergeCounts {
+    /// Hôtes ajoutés.
+    pub hosts: usize,
+    /// Groupes ajoutés.
+    pub groups: usize,
+    /// Identités ajoutées.
+    pub identities: usize,
+    /// Clés ajoutées.
+    pub keys: usize,
+    /// Snippets ajoutés.
+    pub snippets: usize,
+    /// Entrées déjà présentes, ignorées.
+    pub skipped: usize,
+}
+
 /// Saisie d'un hôte (création si `id` est `None`).
 #[derive(Debug, Clone)]
 pub struct HostInput {
@@ -570,6 +587,11 @@ impl VaultData {
         {
             return Err(VaultError::InvalidFile);
         }
+        // Délai de verrouillage : une des valeurs proposées, jamais « jamais » ni zéro (un coffre
+        // ou une sauvegarde fabriqués ne doivent pas pouvoir désactiver le verrouillage).
+        if !AUTO_LOCK_CHOICES.contains(&self.settings.auto_lock_minutes) {
+            return Err(VaultError::InvalidFile);
+        }
         // Les snippets sont envoyés au terminal : leur contenu est revérifié à chaque chargement.
         for snippet in &self.snippets {
             let valid = clean_name(&snippet.name).is_ok_and(|n| n == snippet.name)
@@ -580,6 +602,156 @@ impl VaultData {
             }
         }
         Ok(())
+    }
+
+    /// Revalide **chaque** entrée comme une saisie, plus l'intégrité référentielle et
+    /// l'unicité des identifiants. Sert à l'import d'une sauvegarde : un fichier fabriqué avec la
+    /// bonne phrase de passe ne doit pas pouvoir introduire de données que l'interface refuserait.
+    pub(crate) fn validate_all(&self) -> Result<(), VaultError> {
+        let invalid = |ok: bool| {
+            if ok {
+                Ok(())
+            } else {
+                Err(VaultError::InvalidFile)
+            }
+        };
+        self.check_loaded()?;
+        fn unique<T>(items: &[T], id: impl Fn(&T) -> EntryId) -> bool {
+            let mut seen = std::collections::HashSet::new();
+            items.iter().all(|item| seen.insert(id(item)))
+        }
+        invalid(
+            unique(&self.hosts, |h| h.id)
+                && unique(&self.groups, |g| g.id)
+                && unique(&self.identities, |i| i.id)
+                && unique(&self.keys, |k| k.id)
+                && unique(&self.snippets, |s| s.id),
+        )?;
+        for group in &self.groups {
+            invalid(clean_name(&group.name).is_ok_and(|n| n == group.name))?;
+        }
+        for key in &self.keys {
+            invalid(
+                clean_name(&key.name).is_ok_and(|n| n == key.name)
+                    && !key.private_key.expose_secret().is_empty()
+                    && key.private_key.expose_secret().len() <= 64 * 1024
+                    && !has_control(&key.algorithm)
+                    && !has_control(&key.fingerprint)
+                    && !has_control(&key.public_key),
+            )?;
+        }
+        for identity in &self.identities {
+            invalid(
+                clean_name(&identity.name).is_ok_and(|n| n == identity.name)
+                    && check_username(&identity.username, true).is_ok()
+                    && identity
+                        .password
+                        .as_ref()
+                        .is_none_or(|p| check_secret(p).is_ok())
+                    && (identity.password.is_some() || identity.key_id.is_some())
+                    && identity.key_id.is_none_or(|k| self.key(k).is_ok()),
+            )?;
+        }
+        for host in &self.hosts {
+            let address_ok = !host.address.is_empty()
+                && host.address.len() <= MAX_ADDRESS_LEN
+                && !host
+                    .address
+                    .chars()
+                    .any(|c| c.is_control() || c.is_whitespace());
+            invalid(
+                clean_name(&host.name).is_ok_and(|n| n == host.name)
+                    && address_ok
+                    && host.port != 0
+                    && check_username(&host.username, host.identity_id.is_none()).is_ok()
+                    && clean_tags(&host.tags).is_ok_and(|t| t == host.tags)
+                    && check_notes(&host.notes).is_ok()
+                    && check_protocol(&host.protocol).is_ok()
+                    && host.identity_id.is_none_or(|i| self.identity(i).is_ok())
+                    && self.check_group(host.group_id).is_ok(),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Fusionne une sauvegarde (VLT-06) : les entrées absentes sont ajoutées, **aucune entrée
+    /// existante n'est modifiée** (même identifiant : la version actuelle gagne ; hôte de même
+    /// adresse, port et utilisateur : ignoré). Les clés d'hôte et les réglages ne sont pas
+    /// fusionnés ici (voir l'appelant pour les clés d'hôte ; les réglages actuels sont gardés).
+    pub fn merge_from(&mut self, other: &VaultData) -> Result<MergeCounts, VaultError> {
+        let mut counts = MergeCounts::default();
+        let mut merged = self.clone();
+        for group in &other.groups {
+            if merged.groups.iter().any(|g| g.id == group.id) {
+                counts.skipped += 1;
+            } else {
+                merged.groups.push(group.clone());
+                counts.groups += 1;
+            }
+        }
+        for key in &other.keys {
+            if merged.keys.iter().any(|k| k.id == key.id) {
+                counts.skipped += 1;
+            } else {
+                merged.keys.push(key.clone());
+                counts.keys += 1;
+            }
+        }
+        for identity in &other.identities {
+            if merged.identities.iter().any(|i| i.id == identity.id) {
+                counts.skipped += 1;
+            } else {
+                merged.identities.push(identity.clone());
+                counts.identities += 1;
+            }
+        }
+        for host in &other.hosts {
+            let same = merged.hosts.iter().any(|h| {
+                h.id == host.id
+                    || (h.address.eq_ignore_ascii_case(&host.address)
+                        && h.port == host.port
+                        && h.username == host.username
+                        && h.protocol.is_rdp() == host.protocol.is_rdp())
+            });
+            if same {
+                counts.skipped += 1;
+            } else {
+                merged.hosts.push(host.clone());
+                counts.hosts += 1;
+            }
+        }
+        for snippet in &other.snippets {
+            if merged.snippets.iter().any(|s| s.id == snippet.id) {
+                counts.skipped += 1;
+            } else {
+                merged.snippets.push(snippet.clone());
+                counts.snippets += 1;
+            }
+        }
+        if merged.hosts.len() > MAX_HOSTS
+            || merged.groups.len() > MAX_ENTRIES
+            || merged.identities.len() > MAX_ENTRIES
+            || merged.keys.len() > MAX_ENTRIES
+            || merged.snippets.len() > MAX_SNIPPETS
+        {
+            return Err(VaultError::TooManyEntries);
+        }
+        // Une sauvegarde cohérente donne un résultat cohérent ; on le vérifie quand même.
+        merged.validate_all()?;
+        *self = merged;
+        Ok(counts)
+    }
+
+    /// Accès direct aux réglages, réservé aux tests (fabriquer un contenu invalide).
+    #[cfg(test)]
+    pub(crate) fn settings_mut(&mut self) -> &mut VaultSettings {
+        &mut self.settings
+    }
+
+    /// Accès direct aux hôtes, réservé aux tests (fabriquer un contenu invalide).
+    #[cfg(test)]
+    pub(crate) fn hosts_mut(&mut self) -> &mut Vec<Host> {
+        &mut self.hosts
     }
 
     /// Hôtes.

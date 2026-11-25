@@ -45,6 +45,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 038 | Retrait des tunnels SSH (étape 6) | Acceptée |
 | 039 | Terminal local : profils détectés par le cœur, commandes `term_*` séparées | Acceptée, prise en autonomie, à relire |
 | 040 | RDP v1 : identifiants Windows de type domaine écrits par l'API, seul module `unsafe` du projet | Acceptée, prise en autonomie, à relire |
+| 041 | Import OpenSSH et sauvegarde chiffrée | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -597,3 +598,34 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Si l'utilisateur met plus de 60 s à accepter un certificat inconnu dans mstsc, l'identifiant a disparu : mstsc redemande le mot de passe. Limite assumée (secret présent le moins longtemps possible).
 - Sous Linux, un hôte RDP sans mot de passe dans son identité ne peut pas être ouvert (`rdp.password_required`) ; sous Windows, mstsc le demande lui-même.
 - La protection du certificat RDP sous Linux repose sur le magasin de FreeRDP (`~/.config/freerdp/`), pas sur le coffre ; la vérification TOFU intégrée viendra avec IronRDP (étape 12).
+
+## ADR-041 — Import OpenSSH et sauvegarde chiffrée
+**Statut** : Acceptée (25/11/2026) — prise en autonomie, à relire par le porteur. Met en œuvre ADR-011 (export/import chiffré) ; prolonge ADR-005 (format du coffre), ADR-020 (fichiers choisis par le cœur), ADR-023 et ADR-027 (TOFU strict, clés d'hôte dans le coffre).
+**Contexte** : IMP-01 et IMP-02 demandent de reprendre `~/.ssh/config` et `~/.ssh/known_hosts` ; VLT-06, d'exporter et de réimporter le coffre avec une phrase de passe distincte, en fusion ou en remplacement. Ces trois fonctions font entrer dans le coffre des données venues de l'extérieur : un fichier de config piégé, un `known_hosts` qui glisse la clé d'un attaquant, une sauvegarde fabriquée par quelqu'un qui connaît sa phrase de passe.
+**Décision** :
+- **Import en deux temps, aperçu gardé dans le cœur** : `import_*_preview` lit le fichier (chemin OpenSSH par défaut ou fichier choisi dans la boîte de dialogue ouverte par le cœur), calcule l'aperçu et le garde dans `ImportState` ; `import_*_apply` ne reçoit qu'un identifiant d'aperçu et des **indices**. L'interface ne peut pas glisser d'autres hôtes ni d'autres clés. Un aperçu sert une fois, est remplacé par le suivant et oublié au verrouillage ou au rechargement.
+- **`~/.ssh/config`** (crate `core-import`, sans Tauri) : `Host` (motifs, négations), `HostName`, `User`, `Port`, `IdentityFile`, `Include` (relatif à `~/.ssh`, jokers `*` et `?`) ; configuration effective calculée comme OpenSSH (**première valeur obtenue gagne**, blocs à jokers compris). Les blocs `Match` ne sont **pas pris en charge** : signalés, jamais interprétés. Seuls `%h` et `%%` sont développés ; tout autre jeton fait ignorer l'hôte. Chaque hôte est revalidé comme une saisie (`Target::new`, `upsert_host`) puis rangé dans le groupe « Import OpenSSH », sans identité. Bornes : profondeur d'`Include` 16, 256 fichiers, 1 Mio par fichier, 50 000 lignes, 10 000 alias.
+- **Clés privées `IdentityFile` jamais lues** : leur chemin est signalé pour un import manuel (Clés > Importer, boîte de dialogue et passphrase). L'import ne touche pas au secret le plus sensible du poste.
+- **Utilisateur absent** : utilisateur local (`USER` / `USERNAME`), comme OpenSSH, visible dans l'aperçu.
+- **Hôtes déjà présents** (même adresse, port et utilisateur) : décochés et signalés, pas de doublon. `ProxyJump`, `ProxyCommand` et les redirections sont ignorés avec un avertissement par hôte : l'hôte importé se connectera directement.
+- **`known_hosts` : jamais une autre clé pour un hôte connu**. Une ligne dont un nom en clair est déjà dans le coffre est **refusée** (conflit signalé) ; une ligne identique est un doublon ignoré. `@cert-authority` et les motifs à joker ou négation sont ignorés (non pris en charge) ; `@revoked` est accepté (il ne fait que restreindre). Chaque clé est revalidée (`is_valid_public_key` de `core-ssh` : clé décodable, algorithme admis, DSA refusé). Une ligne à nom haché (`|1|…`) est **refusée** : la vérification des connexions ne consulte pas les noms hachés (ADR-023), elle n'aurait aucun effet (et un `@revoked` haché ne révoquerait rien). L'application est refusée si les clés d'hôte du coffre ont changé depuis l'aperçu.
+- **Sauvegarde `YNJB`** : même format que le coffre (`format.rs` paramétré par la magie), avec un **sel et une DEK neufs**. Une sauvegarde ne s'ouvre pas comme un coffre, ni l'inverse.
+- **Phrase de passe distincte** : même politique que le mot de passe maître (12 caractères, zxcvbn ≥ 3), et **refus si elle ouvre le coffre courant** (`vault.backup_passphrase_reused`). Ce test dérive une clé avec le mot de passe proposé : pour qu'il ne serve pas d'oracle sur le mot de passe maître, la **boîte de dialogue d'enregistrement précède toute dérivation** (action humaine) et chaque export **compte comme une tentative** dans le compteur et le délai progressif du déverrouillage.
+- **Revalidation complète à l'import** : en-tête et tag AEAD, puis chaque entrée comme une saisie (`validate_all` : noms, adresses, protocoles, snippets, unicité des identifiants, intégrité référentielle), **délai de verrouillage** compris (une des valeurs proposées, aussi revérifiée au chargement du coffre), et **algorithme, empreinte et clé publique de chaque clé recalculés** depuis la clé privée, qui doivent correspondre.
+- **Fusion par défaut, sans écrasement** (`merge_from`) : seules les entrées absentes sont ajoutées (même identifiant : la version actuelle gagne ; hôte de même adresse, port et utilisateur : ignoré) ; réglages actuels conservés ; clés d'hôte fusionnées avec la règle de conflit ci-dessus.
+- **Remplacement confirmé** : tout le contenu du coffre est remplacé par celui de la sauvegarde, **clés d'hôte et délai de verrouillage compris** ; le mot de passe maître ne change pas et la version précédente reste dans `vault.younji.bak`. La confirmation le dit et recommande de ne l'utiliser qu'avec sa propre sauvegarde.
+
+**Alternatives écartées** :
+- Importer les clés `IdentityFile` automatiquement : lecture de clés privées et demandes de passphrase en série, pour un gain de quelques clics.
+- Interpréter `Match` : dépend de l'exécution de commandes (`Match exec`) et du contexte réseau ; une interprétation partielle importerait des valeurs fausses.
+- Remplacer la clé d'un hôte connu par celle du `known_hosts` importé, ou demander à l'utilisateur : un fichier piégé pourrait faire accepter la clé d'un attaquant en un clic (ADR-023).
+- Permettre le mot de passe maître comme phrase de passe de sauvegarde : une fuite de la sauvegarde exposerait le coffre, et inversement.
+- Envoyer à l'interface l'aperçu complet puis recevoir les hôtes à créer : une interface compromise pourrait y ajouter ce qu'elle veut.
+- Fusion qui écrase les entrées existantes : perte silencieuse de modifications locales.
+
+**Conséquences** :
+- **Limite** : un `known_hosts` entièrement haché (`HashKnownHosts yes`) n'apporte aucune clé ; ses hôtes passent par la confirmation TOFU à la première connexion.
+- **« Remplacer » fait confiance aux clés d'hôte de la sauvegarde** : c'est une restauration, réservée à sa propre sauvegarde (documenté dans la confirmation et dans `SECURITE.md` §3.7).
+- Après plusieurs exports d'affilée, le déverrouillage et l'export suivants sont ralentis (compteur partagé) ; un verrouillage suivi d'un déverrouillage réussi le remet à zéro.
+- Une sauvegarde d'une version plus récente ou dont le délai de verrouillage n'est pas une valeur proposée est refusée en bloc.
+- Aucune nouvelle dépendance : motifs et analyse écrits à la main, crypto du coffre réutilisée.

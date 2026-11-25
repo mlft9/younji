@@ -252,6 +252,13 @@ describe('capabilities', () => {
       'allow-term-close',
       // Étape 8 : RDP v1 (hôte du carnet désigné par identifiant, client du système).
       'allow-rdp-launch',
+      // Étape 9 : import OpenSSH (aperçu gardé par le cœur) et sauvegarde chiffrée.
+      'allow-import-ssh-config-preview',
+      'allow-import-ssh-config-apply',
+      'allow-import-known-hosts-preview',
+      'allow-import-known-hosts-apply',
+      'allow-backup-export',
+      'allow-backup-import',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });
