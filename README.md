@@ -10,7 +10,7 @@ Client **SSH / SFTP / RDP** de bureau pour **Windows et Linux**, dans l'esprit d
 - Vérification stricte des clés d'hôte (protection contre l'homme du milieu)
 - 2FA (TOTP), clés matérielles FIDO2, générateur et déploiement de clés SSH
 - Explorateur SFTP (panneau qui suit le terminal + vue double panneau)
-- Tunnels SSH (local, distant, SOCKS), snippets de commandes
+- Snippets de commandes
 - Terminal local (PowerShell, CMD, WSL, bash)
 - RDP (client du système, puis natif dans un onglet)
 - Import de `~/.ssh/config`, export/import chiffré

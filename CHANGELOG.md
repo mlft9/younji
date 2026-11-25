@@ -56,6 +56,9 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Diffusion de la saisie : ce que vous tapez part en même temps vers plusieurs sessions choisies, dans n'importe quel onglet (Ctrl+Maj+I ou l'icône antenne). Bandeau rouge en haut de la fenêtre, bordure rouge sur chaque session concernée, arrêt en un clic ou par Ctrl+Maj+I (ADR-036).
 - Snippets : bibliothèque de commandes réutilisables enregistrée dans le coffre, avec recherche, création, modification et suppression. Les variables `{{nom}}` sont demandées au moment de l'envoi, avec un aperçu de la commande finale. Envoi vers la session active ou plusieurs sessions cochées, par Ctrl+Maj+S ou la barre d'outils du terminal, en « Insérer » (sans Entrée) ou « Exécuter » (ADR-037).
 
+### Retiré
+- Tunnels SSH (étape 6, TUN-01 à TUN-03) : fonction retirée du périmètre, jugée non nécessaire pour le début du projet (ADR-038). La section « Tunnels » de la barre latérale, qui n'affichait qu'un emplacement réservé, est supprimée.
+
 ### Modifié
 - Toute l'application, connexion rapide comprise, n'est accessible qu'après le déverrouillage du coffre.
 - Verrouiller l'application, ou recharger l'interface, ferme toutes les sessions SSH et efface le contenu des terminaux (ADR-026).

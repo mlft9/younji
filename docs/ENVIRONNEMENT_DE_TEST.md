@@ -13,7 +13,7 @@ En CI, un conteneur OpenSSH (`tests/docker/sshd/`, depuis l'étape 1) remplace l
 
 | VM | Système | Sert à | Dès l'étape |
 |---|---|---|---|
-| `younji-deb` | Debian 12 ou 13, sans interface graphique | Serveur SSH/SFTP/tunnels principal | 1 |
+| `younji-deb` | Debian 12 ou 13, sans interface graphique | Serveur SSH/SFTP principal | 1 |
 | `younji-win` | Windows Server (évaluation 180 j) ou Windows 11 Entreprise (évaluation 90 j) | Cible RDP, serveur OpenSSH Windows, test d'installation sur un Windows vierge | 0 (installeur), 8 (RDP) |
 | `younji-desktop` | Ubuntu Desktop 24.04 | **Tester la version Linux de Younji** (.deb, AppImage) et xfreerdp | 0 |
 
@@ -95,11 +95,6 @@ ln -s .. lien-vers-parent                        # boucle
 cd -
 ```
 Attendu au téléchargement du dossier `malveillants` : seul `normal.txt` est copié ; les autres noms sont comptés en « noms refusés », les liens en « liens non copiés », et rien n'apparaît en dehors du dossier local choisi. Dans la liste, ces noms sont signalés comme inhabituels.
-
-Service pour les tests de tunnels :
-```bash
-python3 -m http.server 8080 --bind 127.0.0.1   # joignable seulement depuis la VM elle-même
-```
 
 **Tester le changement de clé d'hôte (HKY-02)** : après un snapshot, lance
 `sudo rm /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh`, puis reconnecte-toi avec Younji : la connexion doit être refusée. Restaure ensuite le snapshot.

@@ -15,13 +15,13 @@
 ## 1. Contexte et objectifs
 
 ### 1.1 Contexte
-Les administrateurs systèmes et les profils cyber jonglent tous les jours avec des connexions SSH, des transferts de fichiers, des tunnels et des bureaux à distance. Les outils actuels ont chacun leurs limites :
+Les administrateurs systèmes et les profils cyber jonglent tous les jours avec des connexions SSH, des transferts de fichiers et des bureaux à distance. Les outils actuels ont chacun leurs limites :
 - **MobaXterm** est très complet mais réservé à Windows, avec une interface datée. La version gratuite est limitée.
 - **Termius** est moderne, mais les fonctions avancées sont payantes et la synchronisation passe par un cloud tiers.
 - **PuTTY / KiTTY** sont austères : pas de coffre, pas de SFTP intégré.
 
 ### 1.2 Objectifs
-1. Livrer une **application de bureau Windows et Linux** qui réunit SSH, SFTP, tunnels, terminal local et RDP dans une interface moderne.
+1. Livrer une **application de bureau Windows et Linux** qui réunit SSH, SFTP, terminal local et RDP dans une interface moderne.
 2. Faire de la **sécurité un argument central** : coffre chiffré, vérification stricte des clés d'hôte, durcissement de l'application, chaîne d'approvisionnement maîtrisée.
 3. Produire un **projet de portfolio crédible** : code propre et testé, CI, documentation d'architecture, README illustré, publication open source (GPL-3.0).
 
@@ -49,6 +49,7 @@ Ces éléments ont été écartés lors du cadrage. On pourra les reconsidérer 
 - Synchronisation cloud ou serveur. Seul l'export/import chiffré est prévu.
 - Import de sessions MobaXterm, PuTTY ou CSV. Seul l'import OpenSSH est prévu.
 - Rebond par bastion (ProxyJump), agent forwarding, certificats SSH
+- Tunnels SSH (redirections `-L`, `-R`, `-D`/SOCKS5) : prévus à l'origine à l'étape 6 (TUN-01 à TUN-03), retirés le 25/11/2026 car jugés non nécessaires et trop complexes pour le début (ADR-038)
 - Agent SSH (Pageant, ssh-agent), sauf comme plan B pour FIDO2 (voir AUTH-04)
 - Enregistrement des sessions, monitoring serveur (CPU/RAM)
 - Thèmes et polices entièrement personnalisables. La v1 propose un thème clair et un thème sombre qui suivent le système, plus la taille de police.
@@ -64,7 +65,7 @@ Chaque exigence porte un identifiant et l'étape de la feuille de route (`docs/R
 ### 3.1 Application et interface (APP)
 | ID | Exigence | Prio | Étape |
 |---|---|---|---|
-| APP-01 | Mise en page type Termius : barre latérale par sections (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres) et zone principale à onglets | M | 0 |
+| APP-01 | Mise en page type Termius : barre latérale par sections (Hôtes, Clés, Snippets, SFTP, Paramètres) et zone principale à onglets | M | 0 |
 | APP-02 | Interface FR/EN, langue détectée automatiquement et modifiable à chaud | M | 0 |
 | APP-03 | Thème clair / sombre qui suit le système, avec forçage possible | M | 0 |
 | APP-04 | Raccourcis clavier documentés : nouvel onglet, fermer, onglet suivant/précédent, verrouiller, rechercher | M | 1 |
@@ -133,12 +134,8 @@ Chaque exigence porte un identifiant et l'étape de la feuille de route (`docs/R
 | SNP-02 | Variables `{{nom}}` demandées au moment de l'exécution | S | 5 |
 | SNP-03 | Envoi vers la session active ou vers plusieurs sessions | M | 5 |
 
-### 3.8 Tunnels SSH (TUN)
-| ID | Exigence | Prio | Étape |
-|---|---|---|---|
-| TUN-01 | Redirection locale (`-L`), distante (`-R`) et dynamique SOCKS5 (`-D`) | M | 6 |
-| TUN-02 | Gestionnaire de tunnels : rattachement à un hôte, démarrage/arrêt, état, démarrage automatique en option | M | 6 |
-| TUN-03 | Écoute sur `127.0.0.1` par défaut, avertissement explicite si l'on choisit `0.0.0.0` | M | 6 |
+### 3.8 Tunnels SSH (TUN) — retirés
+Les exigences TUN-01 à TUN-03 sont retirées du périmètre (ADR-038, voir §2.3). Leurs identifiants ne sont pas réattribués.
 
 ### 3.9 Terminal local (LOC)
 | ID | Exigence | Prio | Étape |
