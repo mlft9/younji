@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use core_rdp::{RdpProcess, RdpTarget, Resolution};
+use core_rdp::{ActiveCredentials, RdpProcess, RdpTarget, Resolution};
 use core_vault::{EntryId, HostProtocol, RdpResolution, VaultData};
 use secrecy::SecretString;
 use serde::Serialize;
@@ -21,6 +21,8 @@ pub const MAX_RDP_CLIENTS: usize = 16;
 #[derive(Default)]
 pub struct RdpClients {
     clients: Mutex<Vec<Arc<RdpProcess>>>,
+    /// Identifiants temporaires Windows en cours (un seul lancement par serveur à la fois).
+    active: Arc<ActiveCredentials>,
 }
 
 impl RdpClients {
@@ -100,10 +102,11 @@ pub async fn rdp_launch(
     let (target, password) = vault.read(|vault| rdp_target(vault.data(), host_id))?;
     vault.touch();
     let dir = rdp_dir(&app)?;
+    let active = clients.active.clone();
     // Recherche du client, écriture du fichier et de l'identifiant : hors de l'exécuteur async.
     let process = tauri::async_runtime::spawn_blocking(move || {
         let client = core_rdp::find_client()?;
-        core_rdp::launch(&client, &target, password.as_ref(), &dir)
+        core_rdp::launch(&client, &target, password.as_ref(), &dir, &active)
     })
     .await
     .map_err(|_| AppError::INTERNAL)??;

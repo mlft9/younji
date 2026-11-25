@@ -21,7 +21,7 @@ zeroize = "1.9"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
 
 # Mêmes règles que le workspace, sauf `unsafe_code` : `deny` au lieu de `forbid`, pour que le
-# seul module `wincred` (appels Win32, ADR-039) puisse l'autoriser localement. Toute autre
+# seul module `wincred` (appels Win32, ADR-040) puisse l'autoriser localement. Toute autre
 # utilisation d'`unsafe` dans la crate reste une erreur de compilation.
 [lints.rust]
 unsafe_code = "deny"

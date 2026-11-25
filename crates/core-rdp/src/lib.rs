@@ -16,5 +16,8 @@ pub mod target;
 mod wincred;
 
 pub use error::RdpError;
-pub use launch::{CLEANUP_DELAY, RdpClient, RdpProcess, cleanup_stale, find_client, launch};
+pub use launch::{
+    ActiveCredentials, CLEANUP_DELAY, RdpClient, RdpProcess, cleanup_stale,
+    cleanup_stale_credentials, find_client, launch,
+};
 pub use target::{RdpTarget, Resolution};

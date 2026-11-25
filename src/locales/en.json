@@ -340,11 +340,12 @@
       "invalid_domain": "Invalid RDP domain.",
       "invalid_resolution": "RDP resolution out of range.",
       "invalid_password": "The identity's password cannot be passed to the RDP client (empty, too long or multi-line).",
-      "client_not_found": "No RDP client found. On Linux, install FreeRDP (freerdp3-x11 or freerdp2-x11 package).",
+      "client_not_found": "No RDP client found. On Linux, install FreeRDP 3 (freerdp3-x11 package, xfreerdp3 command).",
       "password_required": "On Linux, the host's identity must include a password: FreeRDP cannot ask for it itself.",
       "credential_failed": "Windows refused the temporary sign-in credential.",
       "temp_file_failed": "The temporary connection file could not be created.",
-      "launch_failed": "The RDP client could not be started."
+      "launch_failed": "The RDP client could not be started.",
+      "busy": "An RDP launch to this server is already in progress. Try again in a minute."
     }
   },
   "vault": {

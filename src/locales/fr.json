@@ -340,11 +340,12 @@
       "invalid_domain": "Domaine RDP invalide.",
       "invalid_resolution": "Résolution RDP hors limites.",
       "invalid_password": "Le mot de passe de l'identité ne peut pas être transmis au client RDP (vide, trop long ou sur plusieurs lignes).",
-      "client_not_found": "Aucun client RDP trouvé. Sous Linux, installez FreeRDP (paquet freerdp3-x11 ou freerdp2-x11).",
+      "client_not_found": "Aucun client RDP trouvé. Sous Linux, installez FreeRDP 3 (paquet freerdp3-x11, commande xfreerdp3).",
       "password_required": "Sous Linux, l'identité de l'hôte doit contenir un mot de passe : FreeRDP ne peut pas le demander lui-même.",
       "credential_failed": "Windows a refusé l'identifiant temporaire de connexion.",
       "temp_file_failed": "Le fichier de connexion temporaire n'a pas pu être créé.",
-      "launch_failed": "Le client RDP n'a pas pu être lancé."
+      "launch_failed": "Le client RDP n'a pas pu être lancé.",
+      "busy": "Une ouverture RDP vers ce serveur est déjà en cours. Réessayez dans une minute."
     }
   },
   "vault": {

@@ -61,9 +61,18 @@ Références : `SECURITE.md` §4.3, §6 (processus externes) ; ADR-007 (RDP en d
 
 ## 6. Choix tranchés en autonomie
 
-1. **Identifiant Windows de type « domaine »** (`CRED_TYPE_DOMAIN_PASSWORD`) écrit par l'API Win32 plutôt qu'un identifiant générique via la crate `keyring` : le mot de passe n'est pas relisible par les autres programmes de la session. Cela demande quelques lignes `unsafe` (FFI) : la règle `unsafe_code = "forbid"` du workspace devient `deny` pour la seule crate `core-rdp`, avec une autorisation limitée au module `wincred` (ADR à ajouter).
+1. **Identifiant Windows de type « domaine »** (`CRED_TYPE_DOMAIN_PASSWORD`) écrit par l'API Win32 plutôt qu'un identifiant générique via la crate `keyring` : le mot de passe n'est pas relisible par les autres programmes de la session. Cela demande quelques lignes `unsafe` (FFI) : la règle `unsafe_code = "forbid"` du workspace devient `deny` pour la seule crate `core-rdp`, avec une autorisation limitée au module `wincred` (ADR-040).
 2. **Identifiant existant de l'utilisateur jamais écrasé** ni supprimé.
 3. **Suppression au plus tard 60 s après le lancement** : mstsc lit l'identifiant au début de la connexion. Point à vérifier en recette (acceptation d'un certificat inconnu plus longue que 60 s).
 4. **Linux : mot de passe obligatoire** dans l'identité (sans terminal, xfreerdp ne peut pas le demander). Windows : sans mot de passe, mstsc le demande lui-même.
 5. **Linux : `/cert:tofu`** plutôt que la question interactive (impossible sans terminal) ou `/cert:ignore` (refusé).
 6. **Clients RDP fermés au verrouillage**, comme les sessions SSH (ADR-026).
+
+## 7. Écarts en cours d'étape (revue de sécurité)
+
+- **Identifiant Windows laissé à la fermeture de Younji (Moyenne)** : Tauri termine le processus sans détruire l'état géré, donc le nettoyage par `Drop` annoncé au §4 n'avait jamais lieu. Corrigé : à `RunEvent::Exit`, les clients lancés sont arrêtés et leurs identifiants supprimés ; chaque identifiant écrit par Younji porte un commentaire marqueur non secret (`Younji (temporaire)`), et au démarrage les `TERMSRV/*` portant ce marqueur sont supprimés (arrêt brutal). Un reste marqué n'est plus pris pour un identifiant de l'utilisateur : il est réécrit puis supprimé.
+- **Question de certificat lisant l'entrée standard (Faible)** : `/cert:tofu,deny` refuse un certificat modifié sans aucune question, indépendamment de l'entrée standard.
+- **Domaine et `utilisateur@domaine` (Faible)** : FreeRDP 3 ne déduit pas le domaine d'un UPN ; la ligne de domaine vide est envoyée sauf pour `DOMAINE\utilisateur` ou un domaine renseigné. Seul `xfreerdp3` (FreeRDP 3) est recherché : FreeRDP 2 ne connaît ni `/cert:tofu,deny` ni le même dialogue. À vérifier en recette avec `alice`, `alice@lab` et `LAB\alice`.
+- **Deux lancements simultanés vers le même serveur (Faible)** : refusé (`rdp.busy`) tant que l'identifiant temporaire du premier existe.
+- **Nom d'utilisateur `LAB\LAB\alice` (Faible)** : le domaine n'est ajouté que si l'utilisateur n'en porte pas déjà un.
+- **Numéro d'ADR** : l'ADR annoncé au §6 (unsafe dans `core-rdp`) prend le numéro ADR-040, l'ADR-039 étant pris par l'étape 7.
