@@ -4,6 +4,11 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 
 import type {
   AppError,
+  BackupImportResult,
+  BackupMode,
+  ConfigImportPreview,
+  ImportSource,
+  KnownHostsImportPreview,
   AppInfo,
   AppSettings,
   ConflictAction,
@@ -204,6 +209,46 @@ export function termClose(terminalId: TerminalId): Promise<void> {
  */
 export function rdpLaunch(hostId: EntryId): Promise<RdpLaunchResult> {
   return call<RdpLaunchResult>('rdp_launch', { hostId });
+}
+
+// ------------------------------------------------------------------ import et sauvegarde
+
+/** Aperçu de l'import de `~/.ssh/config` (`null` : choix du fichier annulé). */
+export function importSshConfigPreview(source: ImportSource): Promise<ConfigImportPreview | null> {
+  return call<ConfigImportPreview | null>('import_ssh_config_preview', { source });
+}
+
+/** Ajoute au carnet les hôtes choisis de l'aperçu. Renvoie le nombre d'hôtes ajoutés. */
+export function importSshConfigApply(previewId: number, indices: number[]): Promise<number> {
+  return call<number>('import_ssh_config_apply', { previewId, indices });
+}
+
+/** Aperçu de l'import de `known_hosts` (`null` : choix du fichier annulé). */
+export function importKnownHostsPreview(
+  source: ImportSource,
+): Promise<KnownHostsImportPreview | null> {
+  return call<KnownHostsImportPreview | null>('import_known_hosts_preview', { source });
+}
+
+/** Enregistre les clés d'hôte de l'aperçu. */
+export function importKnownHostsApply(previewId: number): Promise<void> {
+  return call<undefined>('import_known_hosts_apply', { previewId });
+}
+
+/**
+ * Exporte une sauvegarde chiffrée (fichier choisi dans la boîte de dialogue du cœur). La phrase
+ * de passe n'est transmise qu'ici. Renvoie `false` si le choix du fichier est annulé.
+ */
+export function backupExport(passphrase: string): Promise<boolean> {
+  return call<boolean>('backup_export', { passphrase });
+}
+
+/** Importe une sauvegarde chiffrée (`null` : choix du fichier annulé). */
+export function backupImport(
+  passphrase: string,
+  mode: BackupMode,
+): Promise<BackupImportResult | null> {
+  return call<BackupImportResult | null>('backup_import', { passphrase, mode });
 }
 
 // ------------------------------------------------------------------ coffre

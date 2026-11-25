@@ -1,5 +1,6 @@
 import {
   Folder,
+  FileInput,
   FolderPlus,
   Monitor,
   Pencil,
@@ -18,8 +19,16 @@ import { NameDialog } from '@/components/NameDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ErrorMessage } from '@/features/connect/ErrorMessage';
-import { groupDelete, groupSave, hostDelete, rdpLaunch, toAppError } from '@/lib/ipc';
-import type { GroupEntry, HostEntry } from '@/lib/types';
+import { SshConfigImportDialog } from '@/features/import/SshConfigImportDialog';
+import {
+  groupDelete,
+  groupSave,
+  hostDelete,
+  importSshConfigPreview,
+  rdpLaunch,
+  toAppError,
+} from '@/lib/ipc';
+import type { ConfigImportPreview, GroupEntry, HostEntry, ImportSource } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useSessions } from '@/stores/sessions';
 import { useVault } from '@/stores/vault';
@@ -49,6 +58,19 @@ export function HostsView() {
   const [error, setError] = useState<string | null>(null);
   /** Message d'information après l'ouverture d'un hôte RDP. */
   const [notice, setNotice] = useState<string | null>(null);
+  /** Aperçu de l'import de ~/.ssh/config (IMP-01), gardé par le cœur. */
+  const [importPreview, setImportPreview] = useState<ConfigImportPreview | null>(null);
+
+  async function previewImport(source: ImportSource) {
+    setError(null);
+    setNotice(null);
+    try {
+      const preview = await importSshConfigPreview(source);
+      if (preview) setImportPreview(preview);
+    } catch (failure) {
+      setError(toAppError(failure).code);
+    }
+  }
 
   const visible = filterHosts(snapshot.hosts, filter, query);
   const selectedGroup =
@@ -209,6 +231,13 @@ export function HostsView() {
           >
             <SquareTerminal aria-hidden="true" />
             {t('hosts.quickConnect')}
+          </Button>
+          <Button variant="outline" onClick={() => void previewImport('default')}>
+            <FileInput aria-hidden="true" />
+            {t('import.fromConfig')}
+          </Button>
+          <Button variant="ghost" onClick={() => void previewImport('pick')}>
+            {t('import.fromOtherFile')}
           </Button>
           <Button
             onClick={() => {
@@ -387,6 +416,19 @@ export function HostsView() {
             setDialog(null);
             setFilter({ kind: 'all' });
             void run(() => groupDelete(target.id));
+          }}
+        />
+      )}
+      {importPreview && (
+        <SshConfigImportDialog
+          preview={importPreview}
+          onClose={() => {
+            setImportPreview(null);
+          }}
+          onImported={(count) => {
+            setImportPreview(null);
+            setNotice(t('import.doneConfig', { count }));
+            void refresh();
           }}
         />
       )}

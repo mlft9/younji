@@ -93,6 +93,61 @@ export interface LocalProfile {
 /** Identifiant opaque d'un terminal local, attribué par le cœur. */
 export type TerminalId = number;
 
+// ------------------------------------------------------------------ import et sauvegarde (étape 9)
+
+/** Fichier à importer : emplacement d'OpenSSH (`~/.ssh/…`) ou boîte de dialogue du cœur. */
+export type ImportSource = 'default' | 'pick';
+
+/** Entrée ignorée, avec le code de sa raison (`import.skip.<code>`). */
+export interface ImportSkipped {
+  entry: string;
+  reason: string;
+}
+
+/** Hôte proposé par l'import de `~/.ssh/config` (valeurs déjà validées par le cœur). */
+export interface ConfigImportHost {
+  index: number;
+  alias: string;
+  address: string;
+  port: number;
+  username: string;
+  /** Codes `import.warning.<code>`. */
+  warnings: string[];
+  identityFiles: string[];
+  alreadyInVault: boolean;
+}
+
+/** Aperçu de l'import de `~/.ssh/config`, gardé par le cœur sous `previewId`. */
+export interface ConfigImportPreview {
+  previewId: number;
+  hosts: ConfigImportHost[];
+  skipped: ImportSkipped[];
+}
+
+/** Aperçu de l'import de `known_hosts`. */
+export interface KnownHostsImportPreview {
+  previewId: number;
+  addedCount: number;
+  added: { hosts: string; algorithm: string }[];
+  duplicates: number;
+  skippedCount: number;
+  skipped: { line: number; hosts: string; reason: string }[];
+}
+
+/** Mode d'import d'une sauvegarde chiffrée. */
+export type BackupMode = 'merge' | 'replace';
+
+/** Bilan d'un import de sauvegarde. */
+export interface BackupImportResult {
+  hosts: number;
+  groups: number;
+  identities: number;
+  keys: number;
+  snippets: number;
+  knownHosts: number;
+  skipped: number;
+}
+
 // ------------------------------------------------------------------ coffre (étape 2)
 
 /** État du coffre (`vault_status`). */

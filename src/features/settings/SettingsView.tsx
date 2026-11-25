@@ -16,6 +16,8 @@ import {
 } from '@/stores/settings';
 import { useVault } from '@/stores/vault';
 
+import { BackupSection } from '@/features/backup/BackupSection';
+
 import { ChangePasswordForm } from './ChangePasswordForm';
 
 const LANGUAGE_OPTIONS: readonly LanguagePreference[] = ['system', ...SUPPORTED_LANGUAGES];
@@ -198,6 +200,8 @@ export function SettingsView() {
         </Field>
         <ChangePasswordForm />
       </section>
+
+      <BackupSection />
 
       <section aria-labelledby={`${themeId}-shortcuts`} className="flex flex-col gap-3">
         <h2 id={`${themeId}-shortcuts`} className="text-sm font-semibold text-muted-foreground">
