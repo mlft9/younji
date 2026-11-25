@@ -293,7 +293,8 @@
       "password_mismatch": "The two passwords do not match.",
       "current_password_required": "Enter the current password.",
       "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart.",
-      "invalid_rdp": "Invalid RDP settings: domain (letters, digits, “.”, “-”, “_”) or resolution out of range."
+      "invalid_rdp": "Invalid RDP settings: domain (letters, digits, “.”, “-”, “_”) or resolution out of range.",
+      "backup_passphrase_reused": "The backup passphrase must be different from the master password."
     },
     "book": {
       "no_identity": "This host has no saved identity.",

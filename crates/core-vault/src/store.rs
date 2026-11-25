@@ -174,6 +174,19 @@ impl Vault {
         &self.path
     }
 
+    /// Exporte une sauvegarde chiffrée (VLT-06). La phrase de passe doit être **distincte** du
+    /// mot de passe maître : refusée si elle ouvre ce coffre. Deux dérivations Argon2id : à
+    /// appeler hors de l'exécuteur async.
+    pub fn export_backup(&self, passphrase: &SecretString) -> Result<Vec<u8>, VaultError> {
+        policy::check_master_password(passphrase)?;
+        let kek = crypto::derive_kek(passphrase, &self.header)?;
+        if crypto::unwrap_key(&kek, &self.dek_nonce, &self.header_bytes, &self.wrapped_dek).is_ok()
+        {
+            return Err(VaultError::BackupPassphraseReused);
+        }
+        crate::backup::export_backup(&self.data, passphrase)
+    }
+
     /// Rechiffre les données avec un nouveau nonce et réécrit le fichier de façon atomique
     /// (la version précédente devient `.bak`).
     pub fn save(&self) -> Result<(), VaultError> {
@@ -269,7 +282,7 @@ impl Write for Counter {
 
 /// Sérialise les données dans un tampon effacé à sa destruction. La taille exacte est mesurée
 /// d'abord, pour qu'aucune réallocation ne laisse de copie partielle du clair en mémoire.
-fn serialize(data: &VaultData) -> Result<Zeroizing<Vec<u8>>, VaultError> {
+pub(crate) fn serialize(data: &VaultData) -> Result<Zeroizing<Vec<u8>>, VaultError> {
     let failed = |_| VaultError::Io;
     let mut counter = Counter(0);
     serde_json::to_writer(&mut counter, data).map_err(failed)?;
@@ -425,6 +438,31 @@ mod tests {
 
     fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[test]
+    fn backup_passphrase_must_differ_from_the_master_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, vault) = create(dir.path());
+        assert_eq!(
+            vault.export_backup(&secret(PASSWORD)).unwrap_err(),
+            VaultError::BackupPassphraseReused
+        );
+        let bytes = vault.export_backup(&secret(OTHER)).unwrap();
+        let back = crate::backup::read_backup(&bytes, &secret(OTHER)).unwrap();
+        assert_eq!(back.hosts().len(), vault.data().hosts().len());
+        // Une sauvegarde ne s'ouvre pas comme un coffre, ni l'inverse.
+        let path = dir.path().join("copie.younji");
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(
+            Vault::unlock(&path, &secret(OTHER)).unwrap_err(),
+            VaultError::InvalidFile
+        );
+        let vault_bytes = std::fs::read(vault.path()).unwrap();
+        assert_eq!(
+            crate::backup::read_backup(&vault_bytes, &secret(PASSWORD)).unwrap_err(),
+            VaultError::InvalidFile
+        );
     }
 
     #[test]
