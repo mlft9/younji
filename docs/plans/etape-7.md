@@ -9,9 +9,9 @@ Références : `SECURITE.md` §5 (processus externes lancés par le cœur), §6 
 ## 1. Architecture retenue
 
 - **Crate `core-term`** (sans Tauri) : détection des profils (`profiles.rs`), session PTY (`session.rs`) avec `portable-pty` (ConPTY sous Windows, `openpty` sous Linux). Une session = un fil de lecture (lots bornés, contrôle de flux par acquittement comme SSH, 2 Mio non acquittés au plus), un fil d'écriture (file bornée), un fil qui attend la fin du processus.
-- **Profils désignés par identifiant** : l'interface demande `local_profiles`, reçoit `{ id, name, kind }` et ouvre `local_open { profileId }`. Le programme et ses arguments sont **toujours** reconstruits par le cœur à partir de la détection : aucun chemin ni argument ne vient de l'interface.
-- **src-tauri** : `LocalTerminals` (registre, 32 sessions au plus), commandes `local_profiles`, `local_open`, `local_write`, `local_resize`, `local_ack`, `local_close`. Mêmes `Channel` que SSH (octets bruts + événements JSON `connected` / `disconnected`).
-- **Interface** : un onglet de terminal porte soit une cible SSH, soit un profil local. `TerminalSession` utilise un « transport » (écrire, redimensionner, acquitter, fermer) choisi à l'ouverture ; xterm, recherche, collage gardé, liens et split restent communs. Menu « Terminal local » dans la barre latérale et bouton dans la barre d'onglets.
+- **Profils désignés par identifiant** : l'interface demande `term_profiles`, reçoit `{ id, name, kind, isDefault }` et ouvre `term_open { profileId }`. Le programme et ses arguments sont **toujours** reconstruits par le cœur à partir de la détection : aucun chemin ni argument ne vient de l'interface.
+- **src-tauri** : `LocalTerminals` (registre, 32 sessions au plus), commandes `term_profiles`, `term_open`, `term_write`, `term_resize`, `term_ack`, `term_close` (préfixe `term_` et non `local_` : `local_pick_root` et `local_list` existent déjà pour le SFTP). Mêmes `Channel` que SSH (octets bruts + événements JSON `connected` / `disconnected`).
+- **Interface** : un onglet de terminal porte soit une cible SSH, soit un profil local. `TerminalSession` utilise un « transport » (écrire, redimensionner, acquitter, fermer) choisi à l'ouverture ; xterm, recherche, collage gardé, liens et split restent communs. Section « Terminal local » dans la barre latérale (le bouton dans la barre d'onglets, envisagé au départ, n'a pas été ajouté : la section suffit et garde la barre d'onglets inchangée).
 
 ## 2. Sous-tâches
 
@@ -37,7 +37,7 @@ Références : `SECURITE.md` §5 (processus externes lancés par le cœur), §6 
 | Interface compromise qui lance un programme arbitraire | Seuls les profils détectés par le cœur sont lançables, désignés par un identifiant ; programme et arguments reconstruits côté Rust ; aucun shell intermédiaire ; nom de distribution WSL relu de `wsl.exe` et validé (caractères admis, longueur) avant d'être passé en argument séparé |
 | `$SHELL` piégé (variable d'environnement) | Retenu seulement s'il est absolu, existe et figure dans `/etc/shells` |
 | Sortie massive (`yes`, `cat` d'un gros fichier) | Lots de 32 Kio, acquittement, lecture suspendue au-delà de 2 Mio non acquittés |
-| Terminal local accessible coffre verrouillé | `local_open` refusé coffre verrouillé ; toutes les sessions locales fermées (processus tués) au verrouillage et au rechargement, tampons détruits par l'interface (ADR-026) |
+| Terminal local accessible coffre verrouillé | `term_open` refusé coffre verrouillé ; toutes les sessions locales fermées (processus tués) au verrouillage et au rechargement, tampons détruits par l'interface (ADR-026) |
 | Processus orphelins | Processus tué à la fermeture de l'onglet et à la destruction de la session (`Drop`) |
 | Fuite d'informations | Aucun contenu du terminal ni commande journalisés ; seuls l'identifiant de session et le type de profil |
 | Variables d'environnement de Younji transmises au shell | Environnement hérité de l'utilisateur (c'est son propre shell), plus `TERM=xterm-256color` et `COLORTERM=truecolor` ; aucune variable propre à Younji ajoutée |
@@ -50,7 +50,7 @@ Références : `SECURITE.md` §5 (processus externes lancés par le cœur), §6 
 
 ## 6. Choix tranchés en autonomie
 
-1. **Commandes IPC séparées (`local_*`)** plutôt que de réutiliser `ssh_*` : une commande SFTP ou de clé d'hôte ne peut jamais viser une session locale par erreur.
+1. **Commandes IPC séparées (`term_*`)** plutôt que de réutiliser `ssh_*` : une commande SFTP ou de clé d'hôte ne peut jamais viser une session locale par erreur.
 2. **Terminal local derrière le coffre** (ADR-028) et fermé au verrouillage, comme les sessions SSH : cohérent avec ADR-026, et un poste verrouillé n'offre pas de shell.
 3. **Pas de diffusion ni de snippet vers un terminal local** dans cette étape : la diffusion vise des serveurs listés par adresse ; mélanger shell local et serveurs augmente le risque d'erreur (M7). Réversible.
 4. **Profils non modifiables** (pas de programme personnalisé) : un champ « programme » libre reviendrait à exposer l'exécution arbitraire à l'interface.
@@ -63,4 +63,4 @@ Références : `SECURITE.md` §5 (processus externes lancés par le cœur), §6 
 - **Processus laissé en vie si un fil ne démarre pas (Faible)** : le fil d'attente démarre en premier ; un échec ultérieur lui demande l'arrêt.
 - **Fermeture de ConPTY sous verrou (à vérifier sous Windows)** : le lecteur est débloqué avant, et le PTY est détruit hors du verrou.
 - **Identifiant local publié comme `sessionId` (Faible)** : un onglet local ne publie plus d'identifiant de session ; le panneau SFTP vérifie en plus `local === null`.
-- **Limite connue** : un processus lancé en arrière-plan (`cmd &`) qui survit au shell garde le PTY ouvert ; le fil de lecture de cette session reste alors bloqué jusqu'à la fin de ce processus. Pas de fuite de données ; un fil par session concernée.
+- **Limite connue** : un processus lancé en arrière-plan (`cmd &`) qui survit au shell garde le PTY ouvert ; le fil de lecture de cette session reste alors bloqué jusqu'à la fin de ce processus. Pas de fuite de données ; un fil par session concernée. De même, un programme lancé par un shell qui ignore SIGHUP (`trap '' HUP; cmd`) peut survivre au SIGKILL du shell, qui ne vise que le shell lui-même (remarque Faible de la revue).

@@ -39,7 +39,11 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 032 | Clés générées dans le coffre, sans passphrase ni export de la clé privée | Acceptée, prise en autonomie, à relire ; écart à KEY-01 à trancher |
 | 033 | Déploiement de clé par commande `sh` constante et entrée standard | Acceptée, prise en autonomie, à relire |
 | 034 | SFTP sur la connexion du terminal, dossiers locaux désignés par identifiant, éditeur imposé | Acceptée, prise en autonomie, à relire |
+| 035 | Panneaux (split) : une session par panneau, arbre de disposition par onglet | Acceptée, prise en autonomie, à relire |
+| 036 | Diffusion de la saisie côté interface, cibles explicites | Acceptée, prise en autonomie, à relire |
+| 037 | Snippets dans le coffre, variables sans échappement automatique | Acceptée, prise en autonomie, à relire |
 | 038 | Retrait des tunnels SSH (étape 6) | Acceptée |
+| 039 | Terminal local : profils détectés par le cœur, commandes `term_*` séparées | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -539,3 +543,29 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Moins de surface d'attaque : aucune écoute réseau ouverte par l'application, aucune permission IPC de tunnel.
 - Le bouton panique (étape 16) et la palette de commandes (étape 18) ne mentionnent plus les tunnels.
 - Pour rouvrir le sujet, un nouvel ADR remplacera celui-ci ; la branche archivée sert de point de départ (revue de sécurité déjà passée, verdict OK).
+
+## ADR-039 — Terminal local : profils détectés par le cœur, commandes `term_*` séparées
+**Statut** : Acceptée (25/11/2026) — prise en autonomie, à relire par le porteur. Prolonge ADR-024 (flux et acquittement), ADR-026 (verrouillage) et ADR-028 (application derrière le déverrouillage).
+**Contexte** : LOC-01 et LOC-02 demandent d'ouvrir les shells du poste dans un onglet (PowerShell, PowerShell 7, CMD et distributions WSL sous Windows ; shell par défaut, bash, zsh sous Linux). C'est la première fonction qui **lance un programme local** à la demande de l'interface, que l'on considère comme non fiable : une interface compromise ne doit pas pouvoir s'en servir pour exécuter un programme de son choix.
+**Décision** :
+- **Profils détectés par le cœur, désignés par identifiant** (`core-term`, `profiles.rs`) : `term_profiles` lance la détection et la mémorise ; `term_open` n'accepte qu'un identifiant de cette liste. Programme et arguments sont reconstruits côté Rust et ne sont jamais envoyés à l'interface. Le programme est lancé directement, arguments séparés, **sans shell intermédiaire**. Sous Linux, `$SHELL` n'est retenu comme défaut que s'il est absolu et figure dans `/etc/shells` ; seuls les noms connus (bash, zsh, fish, ksh, tcsh, dash, sh, nu) sont proposés. Sous Windows, programmes pris dans `%SystemRoot%\System32` et `%ProgramFiles%\PowerShell`, distributions lues par `wsl.exe -l -q` (5 s, 64 Kio au plus) et validées (lettres, chiffres, `.`, `_`, `-`, 64 caractères, sans tiret initial), `docker-desktop*` écartées.
+- **Profils non modifiables** : pas de programme ni d'argument personnalisé. Un champ libre reviendrait à exposer l'exécution arbitraire à l'interface.
+- **Commandes IPC séparées** (`term_profiles`, `term_open`, `term_write`, `term_resize`, `term_ack`, `term_close`) plutôt que de réutiliser les `ssh_*` : registre distinct (`LocalTerminals`, 32 terminaux), si bien qu'une commande SFTP ou de clé d'hôte ne peut jamais viser un terminal local. Préfixe `term_`, car `local_pick_root` et `local_list` désignent déjà les dossiers locaux du SFTP. Côté interface, `TerminalSession` choisit un transport (SSH ou local) à l'ouverture ; le reste du terminal est commun.
+- **Derrière le coffre et fermé au verrouillage** : `term_profiles` et `term_open` refusent un coffre verrouillé ; verrouillage manuel, inactivité et rechargement ferment tous les terminaux locaux et tuent leurs processus, comme les sessions SSH. Un poste verrouillé n'offre pas de shell.
+- **Pas de diffusion, de snippet ni de SFTP vers un terminal local** : ces fonctions visent des serveurs désignés par adresse ; y mêler le shell du poste augmente le risque d'erreur. Réversible.
+- **Dossier de départ** : dossier personnel de l'utilisateur. **Environnement** : hérité de l'utilisateur (c'est son propre shell), plus `TERM=xterm-256color` et `COLORTERM=truecolor` ; aucune variable propre à Younji.
+- **Arrêt garanti** : seul le fil d'attente possède le processus. À la fermeture, il le tue avant de l'avoir récupéré (SIGHUP, court délai, puis SIGKILL sous Linux ; `TerminateProcess` sous Windows), puis ferme le PTY. Aucun signal ne peut viser un PID déjà libéré et réattribué.
+- **Flux** : mêmes `Channel` que SSH (octets bruts, événement `disconnected`), même contrôle de flux par acquittement (2 Mio non acquittés au plus). Aucun contenu ni commande journalisé.
+
+**Alternatives écartées** :
+- Recevoir de l'interface un chemin de programme ou une ligne de commande : exécution arbitraire depuis une WebView compromise.
+- Lancer le shell via `sh -c` ou `cmd /c` : ajoute une interprétation, donc un risque d'injection, sans bénéfice.
+- Réutiliser les commandes `ssh_*` avec un type de session : une seule confusion d'identifiant suffirait à envoyer une commande SFTP ou une décision de clé d'hôte au mauvais endroit.
+- Terminal local accessible coffre verrouillé : un poste laissé verrouillé offrirait un shell ; incohérent avec ADR-026 et ADR-028.
+- `Child::kill` appelé depuis un autre fil (« killer » cloné de portable-pty) : n'envoyait qu'un SIGHUP sous Linux, ignoré par certains programmes (revue de sécurité de l'étape 7).
+
+**Conséquences** :
+- Un shell installé hors des emplacements détectés (autre dossier, profil personnalisé) n'est pas proposé ; l'ajouter demandera une décision explicite (liste validée par le cœur), pas un champ libre.
+- Un programme laissé en arrière-plan par le shell (`cmd &`, `trap '' HUP; cmd`) peut survivre à l'arrêt du shell et garder le PTY ouvert ; le fil de lecture du terminal concerné reste alors bloqué jusqu'à sa fin. Pas de fuite de données ; limite documentée dans `SECURITE.md`.
+- Trois fils système par terminal local (lecture, écriture, attente) ; le registre est limité à 32 terminaux.
+- Les variables d'environnement de l'utilisateur, y compris d'éventuels secrets qu'il y a placés lui-même, sont transmises à son shell, comme dans tout terminal.
