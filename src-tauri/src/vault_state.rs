@@ -256,6 +256,21 @@ impl VaultState {
         f(vault)
     }
 
+    /// Lit le coffre déverrouillé hors du fil appelant (opération coûteuse : Argon2id).
+    pub async fn read_blocking<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&Vault) -> Result<T, AppError> + Send + 'static,
+    ) -> Result<T, AppError> {
+        let shared = self.shared.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let guard = shared.lock()?;
+            let vault = guard.as_ref().ok_or(AppError::VAULT_LOCKED)?;
+            f(vault)
+        })
+        .await
+        .map_err(|_| AppError::INTERNAL)?
+    }
+
     /// Modifie les données et sauvegarde (rien ne change en cas d'échec), hors du fil appelant :
     /// le chiffrement et l'écriture atomique (`fsync`, copie `.bak`) ne bloquent ni l'interface
     /// ni l'exécuteur async.

@@ -90,6 +90,12 @@ fn main() {
             "term_ack",
             "term_close",
             "rdp_launch",
+            "import_ssh_config_preview",
+            "import_ssh_config_apply",
+            "import_known_hosts_preview",
+            "import_known_hosts_apply",
+            "backup_export",
+            "backup_import",
         ]));
 
     if let Err(error) = tauri_build::try_build(attributes) {

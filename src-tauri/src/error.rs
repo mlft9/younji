@@ -42,6 +42,12 @@ impl AppError {
     pub const HOST_NOT_SSH: Self = Self::new("book.not_ssh");
     /// Hôte SSH utilisé pour une ouverture RDP.
     pub const HOST_NOT_RDP: Self = Self::new("book.not_rdp");
+    /// Aperçu d'import inconnu ou périmé (déjà appliqué, remplacé, ou coffre modifié depuis).
+    pub const IMPORT_STALE: Self = Self::new("import.stale");
+    /// Fichier à importer introuvable ou illisible.
+    pub const IMPORT_READ_FAILED: Self = Self::new("import.read_failed");
+    /// Fichier à importer trop volumineux.
+    pub const IMPORT_TOO_LARGE: Self = Self::new("import.too_large");
     /// Paramètres hors des valeurs admises.
     pub const SETTINGS_INVALID: Self = Self::new("settings.invalid");
     /// `settings.json` ne peut pas être écrit.
@@ -76,6 +82,9 @@ impl AppError {
         Self::HOST_WITHOUT_IDENTITY,
         Self::HOST_NOT_SSH,
         Self::HOST_NOT_RDP,
+        Self::IMPORT_STALE,
+        Self::IMPORT_READ_FAILED,
+        Self::IMPORT_TOO_LARGE,
         Self::SETTINGS_INVALID,
         Self::SETTINGS_IO,
         Self::EXPORT_FAILED,

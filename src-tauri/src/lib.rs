@@ -80,6 +80,7 @@ pub fn run() {
             app.manage(vault);
             app.manage(LocalTerminals::default());
             app.manage(commands::rdp::RdpClients::default());
+            app.manage(commands::import::ImportState::default());
             // Fichiers .rdp et identifiants Windows temporaires restés d'une exécution
             // interrompue (arrêt brutal pendant le délai de nettoyage).
             if let Ok(dir) = commands::rdp::rdp_dir(app.handle()) {
@@ -210,6 +211,12 @@ pub fn run() {
             commands::term::term_ack,
             commands::term::term_close,
             commands::rdp::rdp_launch,
+            commands::import::import_ssh_config_preview,
+            commands::import::import_ssh_config_apply,
+            commands::import::import_known_hosts_preview,
+            commands::import::import_known_hosts_apply,
+            commands::import::backup_export,
+            commands::import::backup_import,
         ])
         .build(tauri::generate_context!())
         .map(|app| {

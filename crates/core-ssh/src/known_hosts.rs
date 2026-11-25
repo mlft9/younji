@@ -339,6 +339,16 @@ fn parse_line(line: &str) -> Option<Entry<'_>> {
     })
 }
 
+/// Vrai si `algorithme base64` est une clé publique lisible et d'un algorithme admis (DSA
+/// refusé, comme pour les connexions). Sert à valider un `known_hosts` importé (IMP-02).
+pub fn is_valid_public_key(algorithm: &str, base64: &str) -> bool {
+    algorithm != "ssh-dss"
+        && algorithm.len() <= 64
+        && base64.len() <= 16 * 1024
+        && PublicKey::from_openssh(&format!("{algorithm} {base64}"))
+            .is_ok_and(|key| key.algorithm().as_str() == algorithm)
+}
+
 /// Vrai si la liste d'hôtes de la ligne contient exactement `pattern`.
 fn hosts_match(hosts: &str, pattern: &str) -> bool {
     hosts.split(',').any(|candidate| {

@@ -65,6 +65,12 @@
     "allow-term-resize",
     "allow-term-ack",
     "allow-term-close",
-    "allow-rdp-launch"
+    "allow-rdp-launch",
+    "allow-import-ssh-config-preview",
+    "allow-import-ssh-config-apply",
+    "allow-import-known-hosts-preview",
+    "allow-import-known-hosts-apply",
+    "allow-backup-export",
+    "allow-backup-import"
   ]
 }

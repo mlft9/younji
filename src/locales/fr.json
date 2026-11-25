@@ -347,6 +347,11 @@
       "temp_file_failed": "Le fichier de connexion temporaire n'a pas pu être créé.",
       "launch_failed": "Le client RDP n'a pas pu être lancé.",
       "busy": "Une ouverture RDP vers ce serveur est déjà en cours. Réessayez dans une minute."
+    },
+    "import": {
+      "stale": "Cet aperçu n'est plus valable (déjà appliqué, ou données modifiées entre-temps). Relancez l'import.",
+      "read_failed": "Le fichier n'a pas pu être lu (introuvable, droits ou encodage).",
+      "too_large": "Le fichier est trop volumineux."
     }
   },
   "vault": {

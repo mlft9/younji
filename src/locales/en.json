@@ -347,6 +347,11 @@
       "temp_file_failed": "The temporary connection file could not be created.",
       "launch_failed": "The RDP client could not be started.",
       "busy": "An RDP launch to this server is already in progress. Try again in a minute."
+    },
+    "import": {
+      "stale": "This preview is no longer valid (already applied, or data changed meanwhile). Start the import again.",
+      "read_failed": "The file could not be read (missing, permissions or encoding).",
+      "too_large": "The file is too large."
     }
   },
   "vault": {
