@@ -138,6 +138,8 @@ describe('terminal local', () => {
       rows: 24,
     });
     expect(tab()).toMatchObject({ status: 'connected', local: PROFILE, target: null });
+    // L'identifiant local n'est jamais exposé comme identifiant de session SSH.
+    expect(tab()?.sessionId).toBeNull();
     expect(ipc.sshConnect).not.toHaveBeenCalled();
   });
 

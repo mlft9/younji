@@ -55,3 +55,12 @@ Références : `SECURITE.md` §5 (processus externes lancés par le cœur), §6 
 3. **Pas de diffusion ni de snippet vers un terminal local** dans cette étape : la diffusion vise des serveurs listés par adresse ; mélanger shell local et serveurs augmente le risque d'erreur (M7). Réversible.
 4. **Profils non modifiables** (pas de programme personnalisé) : un champ « programme » libre reviendrait à exposer l'exécution arbitraire à l'interface.
 5. **Dossier de départ** : dossier personnel de l'utilisateur.
+
+## 7. Écarts en cours d'étape (revue de sécurité)
+
+- **Arrêt garanti du processus (Moyenne)** : `close()` n'envoyait qu'un SIGHUP sous Linux (le « killer » cloné de portable-pty). Désormais, seul le fil d'attente possède le processus et le tue (SIGHUP, court délai, puis SIGKILL ; `TerminateProcess` sous Windows), puis ferme le PTY. Test : un shell qui ignore SIGHUP est bien arrêté.
+- **Signal vers un PID réutilisé (Faible)** : supprimé par la même conception, le processus n'est tué qu'avant d'avoir été récupéré.
+- **Processus laissé en vie si un fil ne démarre pas (Faible)** : le fil d'attente démarre en premier ; un échec ultérieur lui demande l'arrêt.
+- **Fermeture de ConPTY sous verrou (à vérifier sous Windows)** : le lecteur est débloqué avant, et le PTY est détruit hors du verrou.
+- **Identifiant local publié comme `sessionId` (Faible)** : un onglet local ne publie plus d'identifiant de session ; le panneau SFTP vérifie en plus `local === null`.
+- **Limite connue** : un processus lancé en arrière-plan (`cmd &`) qui survit au shell garde le PTY ouvert ; le fil de lecture de cette session reste alors bloqué jusqu'à la fin de ce processus. Pas de fuite de données ; un fil par session concernée.

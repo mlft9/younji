@@ -19,7 +19,8 @@ import { useSftpClient } from './useSftpClient';
  */
 export function SftpSidePanel({ tab }: { tab: SessionTab }) {
   const { t } = useTranslation();
-  const connected = tab.status === 'connected' ? tab.sessionId : null;
+  // Jamais sur un terminal local (aucune connexion SSH derrière).
+  const connected = tab.status === 'connected' && tab.local === null ? tab.sessionId : null;
   const { sftpId, errorCode, opening, retry } = useSftpClient(connected);
   // Navigation manuelle, avec le dossier du shell au moment où elle a eu lieu : quand le shell
   // change de dossier ensuite, le suivi reprend la main (si l'option est active).
